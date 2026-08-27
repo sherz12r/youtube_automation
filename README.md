@@ -1,100 +1,166 @@
-# vinext-starter
+# Noor Studio — YouTube Story Automation
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Noor Studio is a review-first dashboard for producing Islamic story videos. It is designed around this workflow:
 
-## Prerequisites
+`Scheduled topic research → source verification → story script → human approval → voice → video → YouTube`
 
-- Node.js `>=22.13.0`
+The religious verification and publishing steps intentionally require human approval. The current repository contains the interactive dashboard prototype. Provider-backed research, persistent server scheduling, video rendering, and YouTube upload still need API integrations.
 
-## Quick Start
+## Included
+
+- Story research and review queue
+- Qur'an, translation, and religious-claim verification indicators
+- Full-story playback using the browser's speech engine
+- Daily, weekly, or custom-day scheduling controls
+- Timezone and automation pause controls
+- Mandatory approval before video production
+- Responsive desktop and mobile dashboard
+
+Schedule preferences currently use browser storage. They remain on the same browser/device, but do not run when the application is offline. An always-on scheduler must be connected to a hosted worker, cron task, n8n, or Make workflow.
+
+## Requirements
+
+- Node.js 22.13 or newer
+- npm 10 or newer
+- A modern browser
+
+## Run locally
 
 ```bash
+git clone https://github.com/sherz12r/youtube_automation.git
+cd youtube_automation
 npm install
 npm run dev
+```
+
+Open the local address shown in the terminal, normally `http://localhost:3000`.
+
+Create and test a production build:
+
+```bash
+npm run build
+npm start
+```
+
+To use another port:
+
+### macOS or Linux
+
+```bash
+PORT=8080 npm start
+```
+
+### Windows PowerShell
+
+```powershell
+$env:PORT=8080
+npm start
+```
+
+## Deploy on cPanel
+
+Your cPanel account must include **Setup Node.js App** or **Application Manager**, support Node.js 22+, and allow long-running Node applications. PHP-only shared hosting cannot run this project.
+
+### 1. Upload the project
+
+Use cPanel Git Version Control to clone:
+
+```text
+https://github.com/sherz12r/youtube_automation.git
+```
+
+Select the `master` branch. Alternatively, upload and extract a ZIP outside `public_html`, for example into:
+
+```text
+/home/CPANEL_USER/youtube_automation
+```
+
+### 2. Create the Node application
+
+In **Setup Node.js App**:
+
+- Node.js version: `22` or the newest available version
+- Application mode: `Production`
+- Application root: `youtube_automation`
+- Application URL: your chosen domain or subdomain
+- Startup command: `npm start`, when your host supports npm start commands
+- Startup file: `dist/standalone/server.js`, when cPanel requires a JavaScript file
+
+If the cPanel screen asks for a startup **file** instead of a command, use:
+
+```text
+dist/standalone/server.js
+```
+
+The production server automatically reads cPanel's `PORT` environment variable and listens on `0.0.0.0`.
+
+### 3. Install and build
+
+Open cPanel Terminal, enter the application directory, and run:
+
+```bash
+cd /home/CPANEL_USER/youtube_automation
+npm install
 npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Do not use `npm install --omit=dev` before building because the build tools are development dependencies. After a successful build, restart the application from cPanel.
 
-## Included Shape
+### 4. Environment variables
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+Add secrets in the cPanel Node.js application environment panel—never commit them to Git. Future integrations are expected to use variables such as:
 
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+OPENAI_API_KEY=
+ELEVENLABS_API_KEY=
+YOUTUBE_CLIENT_ID=
+YOUTUBE_CLIENT_SECRET=
+YOUTUBE_REFRESH_TOKEN=
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+These variables are placeholders until their corresponding backend integrations are implemented.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+### 5. Updating the cPanel deployment
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+```bash
+cd /home/CPANEL_USER/youtube_automation
+git pull origin master
+npm install
+npm run build
+```
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+Restart the Node.js application from cPanel after each deployment.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## Scheduled production workflow
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+For real unattended scheduling, configure a cPanel cron job or an external workflow service to call a protected backend endpoint. The recommended production behavior is:
 
-## Useful Commands
+1. Scheduler requests a new story draft.
+2. The backend searches only approved source collections.
+3. The draft and citations are saved as **Needs review**.
+4. A human reviews the wording and references.
+5. Approval starts narration, video rendering, and thumbnail generation.
+6. The finished video is uploaded privately to YouTube.
+7. A final approval schedules or publishes the video.
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+Never place ChatGPT, ElevenLabs, or YouTube secrets in browser-side code.
 
-## Learn More
+## Useful commands
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+```bash
+npm run dev       # local development
+npm run build     # production build
+npm start         # production server
+npm run lint      # code checks
+```
+
+## Technology
+
+- React 19
+- vinext / Vite
+- TypeScript
+- Cloudflare-compatible server output
+
+## Safety note
+
+AI-generated religious content can contain incorrect wording, attribution, or authenticity claims. Keep an approved source library and require a qualified reviewer before publishing.
