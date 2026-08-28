@@ -30,10 +30,14 @@ jobs:
         run: npm ci
 
       - name: Build standalone production app
-        run: npm run build
+        run: |
+          npm run build
+          cp app.js dist/standalone/app.js
 
       - name: Verify deployable output
-        run: test -f dist/standalone/server.js
+        run: |
+          test -f dist/standalone/app.js
+          test -f dist/standalone/server.js
 
       # Only dist/standalone contents are sent to cPanel.
       # Source code, Git metadata and workflow files remain on GitHub.
