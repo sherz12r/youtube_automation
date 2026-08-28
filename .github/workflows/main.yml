@@ -33,11 +33,23 @@ jobs:
         run: |
           npm run build
           cp app.js dist/standalone/app.js
+          cp -a \
+            node_modules/react \
+            node_modules/react-dom \
+            node_modules/react-server-dom-webpack \
+            node_modules/scheduler \
+            node_modules/acorn-loose \
+            node_modules/neo-async \
+            node_modules/webpack-sources \
+            dist/standalone/node_modules/
 
       - name: Verify deployable output
         run: |
           test -f dist/standalone/app.js
           test -f dist/standalone/server.js
+          test -f dist/standalone/node_modules/react/package.json
+          test -f dist/standalone/node_modules/react-dom/package.json
+          test -f dist/standalone/node_modules/react-server-dom-webpack/package.json
 
       # Only dist/standalone contents are sent to cPanel.
       # Source code, Git metadata and workflow files remain on GitHub.
