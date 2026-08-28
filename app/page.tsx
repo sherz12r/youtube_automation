@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Story = { id:number; title:string; subtitle:string; titleEn:string; subtitleEn:string; status:"Needs review"|"Approved"|"Ready"; duration:string; sources:number; progress:number; color:string };
 const initialStories:Story[]=[
@@ -16,6 +16,7 @@ export default function Home(){
  const [scheduleOpen,setScheduleOpen]=useState(false),[scheduleEnabled,setScheduleEnabled]=useState(true),[frequency,setFrequency]=useState("Daily"),[scheduleTime,setScheduleTime]=useState("10:00"),[timezone,setTimezone]=useState("Asia/Dubai"),[days,setDays]=useState(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
  const [language,setLanguage]=useState<"ur"|"en">("en");
  const [seoOpen,setSeoOpen]=useState(false),[seoVariant,setSeoVariant]=useState(0);
+ const audioRef=useRef<HTMLAudioElement|null>(null),audioUrlRef=useRef<string|null>(null);
  const selected=stories.find(s=>s.id===selectedId)??stories[0];
  const filtered=useMemo(()=>stories.filter(s=>(language==="ur"?s.title:s.titleEn).toLowerCase().includes(query.toLowerCase())),[stories,query,language]);
  const storyTitle=(s:Story)=>language==="ur"?s.title:s.titleEn;
@@ -23,21 +24,20 @@ export default function Home(){
  const t=(english:string,urdu:string)=>language==="en"?english:urdu;
  const navItems=[{id:"overview",icon:"⌂",en:"Overview",ur:"جائزہ"},{id:"stories",icon:"▤",en:"Story queue",ur:"کہانیوں کی فہرست"},{id:"sources",icon:"◇",en:"Source library",ur:"مآخذ کی لائبریری"},{id:"studio",icon:"▶",en:"Video studio",ur:"ویڈیو اسٹوڈیو"},{id:"publishing",icon:"↗",en:"Publishing",ur:"اشاعت"}];
  const youtubePack=useMemo(()=>{const title=language==="ur"?`${storyTitle(selected)} | ایمان بدل دینے والی سچی اسلامی کہانی`:`${storyTitle(selected)} | A Powerful Islamic Story of Faith`;const alt=language==="ur"?`${storyTitle(selected)} — صبر اور توکل کا سبق`:`What ${storyTitle(selected)} Teaches Us About Faith`;const description=language==="ur"?`${storySubtitle(selected)}۔ اس مختصر اسلامی کہانی میں معتبر مآخذ کی روشنی میں ایمان، صبر اور اللہ پر توکل کا سبق جانیں۔\n\nحوالہ: قرآن 21:83–84۔ اشاعت سے پہلے تمام مذہبی دعووں کا انسانی جائزہ ضروری ہے۔\n\n#اسلامی_کہانیاں #قرآن #صبر #اردو`:`${storySubtitle(selected)}. Discover a timeless lesson about faith, patience, and trust in Allah through this carefully sourced Islamic story.\n\nReference: Qur’an 21:83–84. All religious claims require human review before publication.\n\n#IslamicStories #Quran #Sabr #MuslimReminder`;const tags=language==="ur"?["اسلامی کہانیاں","اردو اسلامی ویڈیو","حضرت ایوب","صبر","اللہ پر توکل","قرآنی واقعات","مسلم بچوں کی کہانیاں"]:["islamic stories","prophet stories","Prophet Ayyub","patience in Islam","trust in Allah","Quran stories","Muslim reminder"];return{title:seoVariant%2?alt:title,description,tags:tags.join(", ")}},[selected,language,seoVariant]);
- useEffect(()=>{const saved=localStorage.getItem("noor-schedule");if(saved){try{const s=JSON.parse(saved);setScheduleEnabled(s.enabled);setFrequency(s.frequency);setScheduleTime(s.time);setTimezone(s.timezone);setDays(s.days)}catch{}}return()=>window.speechSynthesis?.cancel()},[]);
+ useEffect(()=>{const saved=localStorage.getItem("noor-schedule");if(saved){try{const s=JSON.parse(saved);setScheduleEnabled(s.enabled);setFrequency(s.frequency);setScheduleTime(s.time);setTimezone(s.timezone);setDays(s.days)}catch{}}return()=>{audioRef.current?.pause();if(audioUrlRef.current)URL.revokeObjectURL(audioUrlRef.current);window.speechSynthesis?.cancel()}},[]);
  async function speak(targetLanguage:"ur"|"en"){
-  if(!("speechSynthesis" in window)){setNotice(targetLanguage==="ur"?"اس براؤزر میں آواز کی سہولت دستیاب نہیں۔":"Speech is not supported in this browser.");return}
-  if(playingLanguage){speechSynthesis.cancel();setPlayingLanguage(null);if(playingLanguage===targetLanguage)return}
-  const engine=window.speechSynthesis;
-  let voices=engine.getVoices();
-  if(!voices.length){voices=await new Promise<SpeechSynthesisVoice[]>(resolve=>{const done=()=>resolve(engine.getVoices());engine.addEventListener("voiceschanged",done,{once:true});window.setTimeout(done,1200)})}
-  const wanted=targetLanguage==="ur"?voices.find(v=>v.lang.toLowerCase().startsWith("ur")||v.name.toLowerCase().includes("urdu")):voices.find(v=>v.lang.toLowerCase().startsWith("en-us"))||voices.find(v=>v.lang.toLowerCase().startsWith("en"));
-  if(targetLanguage==="ur"&&!wanted){setNotice("Urdu playback needs an Urdu voice. Install Urdu speech in Windows, or connect an Urdu TTS API for guaranteed playback.");return}
+  if(playingLanguage){audioRef.current?.pause();audioRef.current=null;setPlayingLanguage(null);if(playingLanguage===targetLanguage)return}
   const spokenTitle=targetLanguage==="ur"?selected.title:selected.titleEn;
-  const u=new SpeechSynthesisUtterance(`${spokenTitle}. ${targetLanguage==="ur"?storyText:storyTextEn}`);
-  if(wanted)u.voice=wanted;
-  u.lang=targetLanguage==="ur"?"ur-PK":"en-US";u.rate=targetLanguage==="ur"?.82:.92;u.pitch=1;
-  u.onstart=()=>setPlayingLanguage(targetLanguage);u.onend=()=>setPlayingLanguage(null);u.onerror=()=>{setPlayingLanguage(null);setNotice(targetLanguage==="ur"?"اردو آواز شروع نہیں ہو سکی۔ Urdu speech voice یا Urdu TTS API درکار ہے۔":"Voice playback could not start.")};
-  engine.cancel();engine.resume();window.setTimeout(()=>engine.speak(u),80);
+  setPlayingLanguage(targetLanguage);
+  try{
+   const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:targetLanguage,text:`${spokenTitle}. ${targetLanguage==="ur"?storyText:storyTextEn}`})});
+   if(!response.ok)throw new Error("Speech request failed");
+   if(audioUrlRef.current)URL.revokeObjectURL(audioUrlRef.current);
+   const url=URL.createObjectURL(await response.blob());audioUrlRef.current=url;
+   const audio=new Audio(url);audioRef.current=audio;
+   audio.onended=()=>setPlayingLanguage(null);audio.onerror=()=>{setPlayingLanguage(null);setNotice(targetLanguage==="ur"?"اردو آواز چل نہیں سکی۔":"English audio could not be played.")};
+   await audio.play();
+  }catch{setPlayingLanguage(null);setNotice(targetLanguage==="ur"?"اردو آواز کی سروس دستیاب نہیں۔ براہ کرم دوبارہ کوشش کریں۔":"Speech service is unavailable. Please try again.")}
  }
  function approve(){setStories(c=>c.map(s=>s.id===selected.id?{...s,status:"Approved",progress:100}:s));setNotice(language==="ur"?"کہانی منظور ہو گئی۔ اردو ویڈیو بنانے کے لیے فہرست میں شامل کر دی گئی ہے۔":"Story approved and added to the English video queue.")}
  function generate(){setGenerating(true);setNotice(language==="ur"?"معتبر اسلامی مآخذ تلاش کر کے اردو مسودہ تیار کیا جا رہا ہے…":"Searching authentic Islamic sources and preparing an English draft…");setTimeout(()=>{const s:Story={id:Date.now(),title:"فرعون کے سامنے حضرت موسیٰؑ کی جرأت",subtitle:"اللہ پر بھروسا کرتے ہوئے حق بات کہنا",titleEn:"The Courage of Musa Before Pharaoh",subtitleEn:"Speaking truth with trust in Allah",status:"Needs review",duration:"4:05",sources:5,progress:68,color:"purple"};setStories(c=>[s,...c]);setSelectedId(s.id);setGenerating(false);setNotice(language==="ur"?"نیا اردو مسودہ آپ کے جائزے کے لیے تیار ہے۔":"A new English draft is ready for your review.")},1200)}

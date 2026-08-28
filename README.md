@@ -131,6 +131,19 @@ npm run build
 
 Restart the Node.js application from cPanel after each deployment.
 
+### Urdu and English speech
+
+The Listen buttons generate MP3 audio on the server, so visitors do not need
+Urdu or English system voices installed on their devices. Add the following
+environment variable in cPanel's **Setup Node.js App** screen:
+
+```text
+OPENAI_API_KEY=your_api_key
+```
+
+Keep this value in cPanel only. Do not add it to GitHub or commit it to the
+repository. Restart the Node.js application after adding or changing it.
+
 ## Scheduled production workflow
 
 For real unattended scheduling, configure a cPanel cron job or an external workflow service to call a protected backend endpoint. The recommended production behavior is:
@@ -164,3 +177,12 @@ npm run lint      # code checks
 ## Safety note
 
 AI-generated religious content can contain incorrect wording, attribution, or authenticity claims. Keep an approved source library and require a qualified reviewer before publishing.
+
+
+### htaccess
+```
+RewriteEngine On
+
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+```
