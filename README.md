@@ -4,7 +4,7 @@ Noor Studio is a review-first dashboard for producing Islamic story videos. It i
 
 `Scheduled topic research → source verification → story script → human approval → voice → video → YouTube`
 
-The religious verification and publishing steps intentionally require human approval. The current repository contains the interactive dashboard prototype. Provider-backed research, persistent server scheduling, video rendering, and YouTube upload still need API integrations.
+The religious verification and publishing steps intentionally require human approval. Approved stories can be narrated with OpenAI, rendered as downloadable browser-generated WebM videos, previewed, and optionally uploaded privately through the YouTube Data API. Provider-backed research and persistent server scheduling still need API integrations.
 
 ## Included
 
@@ -14,6 +14,8 @@ The religious verification and publishing steps intentionally require human appr
 - Daily, weekly, or custom-day scheduling controls
 - Timezone and automation pause controls
 - Mandatory approval before video production
+- In-browser narrated video creation, preview, and WebM download
+- Optional private YouTube upload after video review
 - Responsive desktop and mobile dashboard
 
 Schedule preferences currently use browser storage. They remain on the same browser/device, but do not run when the application is offline. An always-on scheduler must be connected to a hosted worker, cron task, n8n, or Make workflow.
@@ -118,7 +120,7 @@ YOUTUBE_CLIENT_SECRET=
 YOUTUBE_REFRESH_TOKEN=
 ```
 
-These variables are placeholders until their corresponding backend integrations are implemented.
+`OPENAI_API_KEY` enables narration and video creation. The three YouTube values enable the optional private-upload button; the refresh token must include the `youtube.upload` OAuth scope.
 
 ### 5. Updating the cPanel deployment
 
@@ -152,9 +154,9 @@ For real unattended scheduling, configure a cPanel cron job or an external workf
 2. The backend searches only approved source collections.
 3. The draft and citations are saved as **Needs review**.
 4. A human reviews the wording and references.
-5. Approval starts narration, video rendering, and thumbnail generation.
-6. The finished video is uploaded privately to YouTube.
-7. A final approval schedules or publishes the video.
+5. Approval unlocks narrated video rendering in the browser.
+6. The finished video can be previewed and downloaded.
+7. The reviewer can optionally upload it privately to YouTube.
 
 Never place ChatGPT, ElevenLabs, or YouTube secrets in browser-side code.
 
