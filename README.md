@@ -135,8 +135,10 @@ Restart the Node.js application from cPanel after each deployment.
 
 ### Urdu and English speech
 
-The Listen buttons generate MP3 audio on the server, so visitors do not need
-Urdu or English system voices installed on their devices. Add the following
+The Listen buttons generate audio on the server, so visitors do not need
+Urdu or English system voices installed on their devices. Long scripts are
+split into provider-safe narration chunks and returned as one complete audio
+file, so the app does not impose a story-length cap. Add the following
 environment variable in cPanel's **Setup Node.js App** screen:
 
 ```text
