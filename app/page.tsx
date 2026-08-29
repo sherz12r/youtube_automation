@@ -11,6 +11,9 @@ const newestFirst=(a:Story,b:Story)=>b.id-a.id;
 const storyKey=(story:{titleEn:string})=>story.titleEn.trim().toLowerCase();
 const latestStoryId=(collection:Story[])=>collection.reduce((latest,story)=>Math.max(latest,story.id),collection[0]?.id??1);
 const initialSelectedStoryId=latestStoryId(initialStories);
+const blockedMediaPhrases=[/\bNoor\s*Studio\b/gi,/نور\s*اسٹوڈیو/g];
+function cleanMediaText(value:string){return blockedMediaPhrases.reduce((text,pattern)=>text.replace(pattern,""),value).replace(/[ \t]{2,}/g," ").replace(/\s+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim()}
+function mediaText(value:string,fallback="Islamic story"){return cleanMediaText(value)||fallback}
 const validStatuses:Story["status"][]=["Needs review","Approved","Ready"];
 function isStoredStory(value:unknown):value is Story{
  if(!value||typeof value!=="object")return false;
@@ -113,7 +116,7 @@ export default function Home(){
  const selectedReference=storyReference(selected);
  const t=(english:string,urdu:string)=>language==="en"?english:urdu;
  const navItems=[{id:"overview",icon:"⌂",en:"Overview",ur:"جائزہ"},{id:"stories",icon:"▤",en:"Story queue",ur:"کہانیوں کی فہرست"},{id:"sources",icon:"◇",en:"Source library",ur:"مآخذ کی لائبریری"},{id:"studio",icon:"▶",en:"Video studio",ur:"ویڈیو اسٹوڈیو"},{id:"publishing",icon:"↗",en:"Publishing",ur:"اشاعت"}];
- const youtubePack=useMemo(()=>{const title=language==="ur"?`${storyTitle(selected)} | ایمان بدل دینے والی سچی اسلامی کہانی`:`${storyTitle(selected)} | A Powerful Islamic Story of Faith`;const alt=language==="ur"?`${storyTitle(selected)} — صبر اور توکل کا سبق`:`What ${storyTitle(selected)} Teaches Us About Faith`;const description=language==="ur"?`${storySubtitle(selected)}۔ اس مختصر اسلامی کہانی میں معتبر مآخذ کی روشنی میں ایمان، صبر اور اللہ پر توکل کا سبق جانیں۔\n\nحوالہ: ${selectedReference.sourceUr}۔ اشاعت سے پہلے تمام مذہبی دعووں کا انسانی جائزہ ضروری ہے۔\n\n#اسلامی_کہانیاں #قرآن #صبر #اردو`:`${storySubtitle(selected)}. Discover a timeless lesson about faith, patience, and trust in Allah through this carefully sourced Islamic story.\n\nReference: ${selectedReference.sourceEn}. All religious claims require human review before publication.\n\n#IslamicStories #Quran #Sabr #MuslimReminder`;const tags=language==="ur"?["اسلامی کہانیاں","اردو اسلامی ویڈیو","حضرت ایوب","صبر","اللہ پر توکل","قرآنی واقعات","مسلم بچوں کی کہانیاں"]:["islamic stories","prophet stories","Prophet Ayyub","patience in Islam","trust in Allah","Quran stories","Muslim reminder"];return{title:seoVariant%2?alt:title,description,tags:tags.join(", ")}},[selected,language,seoVariant,selectedReference]);
+ const youtubePack=useMemo(()=>{const title=language==="ur"?`${storyTitle(selected)} | ایمان بدل دینے والی سچی اسلامی کہانی`:`${storyTitle(selected)} | A Powerful Islamic Story of Faith`;const alt=language==="ur"?`${storyTitle(selected)} — صبر اور توکل کا سبق`:`What ${storyTitle(selected)} Teaches Us About Faith`;const description=language==="ur"?`${storySubtitle(selected)}۔ اس مختصر اسلامی کہانی میں معتبر مآخذ کی روشنی میں ایمان، صبر اور اللہ پر توکل کا سبق جانیں۔\n\nحوالہ: ${selectedReference.sourceUr}۔ اشاعت سے پہلے تمام مذہبی دعووں کا انسانی جائزہ ضروری ہے۔\n\n#اسلامی_کہانیاں #قرآن #صبر #اردو`:`${storySubtitle(selected)}. Discover a timeless lesson about faith, patience, and trust in Allah through this carefully sourced Islamic story.\n\nReference: ${selectedReference.sourceEn}. All religious claims require human review before publication.\n\n#IslamicStories #Quran #Sabr #MuslimReminder`;const tags=language==="ur"?["اسلامی کہانیاں","اردو اسلامی ویڈیو","حضرت ایوب","صبر","اللہ پر توکل","قرآنی واقعات","مسلم بچوں کی کہانیاں"]:["islamic stories","prophet stories","Prophet Ayyub","patience in Islam","trust in Allah","Quran stories","Muslim reminder"];return{title:mediaText(seoVariant%2?alt:title),description:cleanMediaText(description),tags:cleanMediaText(tags.join(", "))}},[selected,language,seoVariant,selectedReference]);
  useEffect(()=>{const saved=localStorage.getItem("noor-schedule");if(saved){try{const s=JSON.parse(saved);setScheduleEnabled(s.enabled);setFrequency(s.frequency);setScheduleTime(s.time);setTimezone(s.timezone);setDays(s.days)}catch{}}const savedStories=localStorage.getItem("noor-stories");if(savedStories){try{const stored=JSON.parse(savedStories) as unknown;if(Array.isArray(stored)){const restored=mergeStoredStories(stored.filter(isStoredStory));if(restored.length){setStories(restored);setSelectedId(latestStoryId(restored))}}else if(stored&&typeof stored==="object"){const statuses=stored as Record<string,{status:Story["status"];progress:number}>;setStories(current=>uniqueStories(current.map(story=>statuses[String(story.id)]?{...story,...statuses[String(story.id)]}:story)))}}catch{}}setStoriesLoaded(true);return()=>{audioRequestRef.current?.abort();audioRef.current?.pause();if(audioUrlRef.current)URL.revokeObjectURL(audioUrlRef.current);window.speechSynthesis?.cancel()}},[]);
  useEffect(()=>{if(!storiesLoaded)return;localStorage.setItem("noor-stories",JSON.stringify(stories))},[stories,storiesLoaded]);
  useEffect(()=>{let cancelled=false;loadStoryVideo(selectedId).then(saved=>{if(cancelled)return;if(videoUrl)URL.revokeObjectURL(videoUrl);if(saved){setVideoBlob(saved.blob);setVideoUrl(URL.createObjectURL(saved.blob));setVideoStoryId(selectedId);setVideoLanguage(saved.language);setVideoProgress(100)}else{setVideoBlob(null);setVideoUrl("");setVideoStoryId(null);setVideoProgress(0)}}).catch(()=>{if(!cancelled){setVideoBlob(null);setVideoUrl("");setVideoStoryId(null)}});return()=>{cancelled=true}},[selectedId]);
@@ -141,7 +144,7 @@ export default function Home(){
   if(shouldOnlyStop)return;
   const playbackId=++playbackIdRef.current;
   const spokenTitle=targetLanguage==="ur"?selected.title:selected.titleEn;
-  const spokenText=`${spokenTitle}. ${storyBody(selected,targetLanguage)}`;
+  const spokenText=mediaText(`${spokenTitle}. ${storyBody(selected,targetLanguage)}`);
   setPlayingLanguage(targetLanguage);
   // English is normally available as a system voice on mobile. Urdu is sent
   // to the server first because many mobile browsers do not ship an Urdu voice.
@@ -164,8 +167,8 @@ export default function Home(){
   if(creatingVideo)return;
   setCreatingVideo(true);setVideoLanguage(targetLanguage);setVideoProgress(2);setNotice("");
   try{
-   const title=targetLanguage==="ur"?selected.title:selected.titleEn;
-   const body=storyBody(selected,targetLanguage);
+   const title=mediaText(targetLanguage==="ur"?selected.title:selected.titleEn);
+   const body=mediaText(storyBody(selected,targetLanguage),targetLanguage==="ur"?selected.subtitle:selected.subtitleEn);
    const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:targetLanguage,text:`${title}. ${body}`})});
    if(!response.ok)throw new Error("Narration could not be generated. Add OPENAI_API_KEY and try again.");
    const audioBlob=await response.blob();setVideoProgress(12);
@@ -209,7 +212,7 @@ export default function Home(){
  async function uploadVideo(){
   if(!videoBlob||uploadingVideo)return;setUploadingVideo(true);setNotice("");
   try{
-   const sessionResponse=await fetch("/api/youtube/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:videoLanguage==="ur"?selected.title:selected.titleEn,description:youtubePack.description,tags:youtubePack.tags,fileSize:videoBlob.size,mimeType:videoBlob.type||"video/webm"})});
+   const sessionResponse=await fetch("/api/youtube/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:mediaText(videoLanguage==="ur"?selected.title:selected.titleEn),description:cleanMediaText(youtubePack.description),tags:cleanMediaText(youtubePack.tags),fileSize:videoBlob.size,mimeType:videoBlob.type||"video/webm"})});
    const sessionText=await sessionResponse.text();let session:{uploadUrl?:string;error?:string}={};try{session=JSON.parse(sessionText)}catch{throw new Error(sessionText||"YouTube upload could not start.")};if(!sessionResponse.ok||!session.uploadUrl)throw new Error(session.error||"YouTube upload could not start.");
    const chunkSize=512*1024;let finalResult:{complete?:boolean;url?:string;error?:string}={};
    for(let start=0;start<videoBlob.size;start+=chunkSize){const end=Math.min(start+chunkSize,videoBlob.size);setNotice(`Uploading to YouTube… ${Math.round(start/videoBlob.size*100)}%`);const response=await fetch("/api/youtube/upload",{method:"PUT",headers:{"Content-Range":`bytes ${start}-${end-1}/${videoBlob.size}`,"X-YouTube-Upload-Url":session.uploadUrl,"X-Video-Content-Type":videoBlob.type||"video/webm"},body:videoBlob.slice(start,end)});const text=await response.text();try{finalResult=JSON.parse(text)}catch{throw new Error(text||"YouTube upload failed.")};if(!response.ok)throw new Error(finalResult.error||"YouTube upload failed.")}
