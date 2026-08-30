@@ -100,3 +100,5 @@ html,body{max-width:100%;overflow-x:hidden}
  .review-head small{display:none}
 }
 .mark-published{border:1px solid #bfd4c5;background:#e7f2ea;color:#315d47}.mark-published:disabled{opacity:.65}
+.youtube-link-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.youtube-link-actions button,.youtube-link-actions a{border-radius:7px;padding:9px 11px;font-size:9px;font-weight:bold;text-decoration:none;text-align:center}.youtube-watch{border:1px solid #c62828;background:#c62828;color:#fff}.youtube-copy{border:1px solid #d9d3cc;background:#fff;color:#775844}
+.reader-share{display:flex;gap:8px;margin-top:10px}.reader-share button{flex:1;border:1px solid #cfdcd3;background:#edf3ee;color:#315d47;border-radius:7px;padding:10px;font-size:10px;font-weight:bold}

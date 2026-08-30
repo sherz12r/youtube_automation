@@ -120,7 +120,7 @@ YOUTUBE_CLIENT_SECRET=
 YOUTUBE_REFRESH_TOKEN=
 ```
 
-`OPENAI_API_KEY` enables narration and video creation. The three YouTube values enable the optional private-upload button; the refresh token must include the `youtube.upload` OAuth scope.
+`OPENAI_API_KEY` enables narration and video creation. The three YouTube OAuth values enable uploading; the refresh token must include the `youtube.upload` OAuth scope. Add `YOUTUBE_API_KEY` to let the uploader search recent, high-view related public videos and automatically enrich descriptions and tags with recurring relevant phrases. Without an API key, discovery falls back to OAuth and gracefully keeps the original metadata if the token lacks a read scope.
 
 ### 5. Updating the cPanel deployment
 
