@@ -18,7 +18,7 @@ export async function POST(request:NextRequest){
   const {title,description,tags,fileSize,mimeType}=await request.json() as {title?:string;description?:string;tags?:string;fileSize?:number;mimeType?:string};
   if(!fileSize||fileSize<1)return NextResponse.json({error:"A generated video is required."},{status:400});
   const accessToken=await getAccessToken();
-  const metadata={snippet:{title:mediaText(String(title||"Islamic story")).slice(0,100),description:cleanMediaText(String(description||"")).slice(0,5000),tags:cleanMediaText(String(tags||"")).split(",").map(tag=>tag.trim()).filter(Boolean).slice(0,30),categoryId:"22"},status:{privacyStatus:"private",selfDeclaredMadeForKids:false}};
+  const metadata={snippet:{title:mediaText(String(title||"Islamic story")).slice(0,100),description:cleanMediaText(String(description||"")).slice(0,5000),tags:cleanMediaText(String(tags||"")).split(",").map(tag=>tag.trim()).filter(Boolean).slice(0,30),categoryId:"22"},status:{privacyStatus:"public",selfDeclaredMadeForKids:true}};
   const response=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=resumable",{method:"POST",headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Length":String(fileSize),"X-Upload-Content-Type":mimeType||"video/webm"},body:JSON.stringify(metadata)});
   if(!response.ok)return NextResponse.json({error:await response.text()||"YouTube could not start the upload."},{status:response.status});
   const uploadUrl=response.headers.get("location");
@@ -32,13 +32,14 @@ export async function PUT(request:NextRequest){
   const uploadUrl=request.headers.get("x-youtube-upload-url"), contentRange=request.headers.get("content-range"), contentType=request.headers.get("x-video-content-type")||"video/webm";
   if(!uploadUrl||!contentRange)return NextResponse.json({error:"Upload session details are missing."},{status:400});
   const url=new URL(uploadUrl);
-  if(url.protocol!=="https:"||!(url.hostname==="www.googleapis.com"||url.hostname.endsWith(".googleapis.com")))return NextResponse.json({error:"Invalid YouTube upload destination."},{status:400});
+  const googleUploadHost=url.hostname==="www.googleapis.com"||url.hostname.endsWith(".googleapis.com")||url.hostname.endsWith(".googleusercontent.com");
+  if(url.protocol!=="https:"||!googleUploadHost)return NextResponse.json({error:"Invalid YouTube upload destination."},{status:400});
   const accessToken=await getAccessToken();
-  const response=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":contentType,"Content-Range":contentRange},body:await request.arrayBuffer()});
+  const response=await fetch(uploadUrl,{method:"PUT",redirect:"manual",headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":contentType,"Content-Range":contentRange},body:await request.arrayBuffer()});
   const text=await response.text();
   if(response.status===308)return NextResponse.json({complete:false,range:response.headers.get("range")});
   if(!response.ok)return NextResponse.json({error:text||"YouTube rejected an upload chunk."},{status:response.status});
   const result=JSON.parse(text) as {id?:string};
-  return NextResponse.json({complete:true,id:result.id,url:result.id?`https://youtu.be/${result.id}`:null,privacyStatus:"private"});
+  return NextResponse.json({complete:true,id:result.id,url:result.id?`https://youtu.be/${result.id}`:null,privacyStatus:"public",madeForKids:true});
  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"YouTube upload failed."},{status:500})}
 }

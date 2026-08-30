@@ -99,3 +99,4 @@ html,body{max-width:100%;overflow-x:hidden}
  .story-art{width:42px;height:42px}
  .review-head small{display:none}
 }
+.mark-published{border:1px solid #bfd4c5;background:#e7f2ea;color:#315d47}.mark-published:disabled{opacity:.65}

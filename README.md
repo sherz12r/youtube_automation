@@ -150,6 +150,13 @@ repository. Restart the Node.js application after adding or changing it.
 
 ## Scheduled production workflow
 
+All provider-backed story writing must follow
+[`prompts/islamic-youtube-story-writer.md`](prompts/islamic-youtube-story-writer.md).
+That specification is the canonical prompt for accuracy, sourcing, Islamic adab,
+Urdu narration, titles, thumbnails, descriptions, and output structure. The
+current starter stories are bundled drafts; a future research/writing provider
+must load this prompt instead of duplicating or weakening its rules in code.
+
 For real unattended scheduling, configure a cPanel cron job or an external workflow service to call a protected backend endpoint. The recommended production behavior is:
 
 1. Scheduler requests a new story draft.
