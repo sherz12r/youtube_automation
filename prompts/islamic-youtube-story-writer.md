@@ -34,8 +34,27 @@ Never sacrifice Islamic or historical accuracy for virality.
 
 - Capture attention in the first 5–10 seconds with a verified powerful moment,
   question, difficulty, decision, consequence, or emotional scene.
-- Do not begin with greetings, generic introductions, or promises about what the
-  video will discuss.
+- Begin the spoken script with a brief, warm introduction naming the subject,
+  a source-supported distinction, and the scope: "Today we will tell you the
+  story of..." / "آج ہم آپ کو ... کی کہانی سنائیں گے۔" The introduction belongs
+  in the full voice-over script, not only in a separate hook field.
+- Tell one complete chronological narrative, not a montage of unrelated events
+  or stories about different people. Introduce people before referring to them.
+- For a prophet's story, start with the known origins and background needed to
+  understand the journey. Explain why each departure, journey, conflict, or
+  change happens. Never invent birth or childhood details absent from sources.
+- Define the narrative's endpoint in the introduction. Complete that arc with
+  its outcome before the lesson; do not label one episode an entire biography.
+- For Musa's confrontation with Pharaoh, include birth under oppression, his
+  mother's protection, the river, Pharaoh's household, reunion with his mother,
+  upbringing, the accidental killing and repentance, warning and flight from
+  Egypt, helping the women in Madyan, marriage and service, return journey,
+  revelation, Harun's help, confrontation, magicians, continued oppression and
+  signs, departure, sea crossing, and rescue. Do not open on the return from
+  Madyan or insert unrelated Musa episodes such as Khidr into this arc.
+- Length must serve completeness. Do not force long-form stories into a short
+  summary or omit causes to meet a duration target. Keep Urdu and English
+  versions equivalent in scope, chronology, introduction, and conclusion.
 - When supported naturally by the source, use: hook → context → person/event →
   challenge → rising tension → decision → climax → result → lesson → ending.
 - Every section must add information, a development, a meaningful question, a
@@ -99,7 +118,8 @@ Never sacrifice Islamic or historical accuracy for virality.
 ## Silent final check
 
 Before returning content, check accuracy, traceable sources, quotations, adab,
-title truthfulness, hook strength, retention, natural spoken Urdu, fact-based
+title truthfulness, introduction, chronological completeness, explained transitions,
+single-story focus, resolved ending, hook strength, retention, natural spoken Urdu, fact-based
 emotion, and whether the lesson follows from the source. Rewrite cautiously or
 flag uncertainty whenever an important claim cannot be verified.
 

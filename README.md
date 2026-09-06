@@ -8,6 +8,16 @@ The religious verification and publishing steps intentionally require human appr
 
 ## Included
 
+Story creation currently selects from the bilingual draft library in `app/page.tsx`;
+it does not call an AI story-generation provider. Each draft includes a spoken
+introduction, the background needed for its selected narrative, chronological
+transitions, and an ending. Musa's narrative follows his birth through the rescue
+from Pharaoh, rather than claiming to cover his entire later life. The same text
+is used for reading, sharing, narration, and video. Existing saved entries use
+the current library text; previously rendered videos must be recreated to include
+revised narration. Future provider integrations must apply
+`prompts/islamic-youtube-story-writer.md`.
+
 - Story research and review queue
 - Qur'an, translation, and religious-claim verification indicators
 - Full-story playback using the browser's speech engine
