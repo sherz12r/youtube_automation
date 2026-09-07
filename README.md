@@ -30,6 +30,43 @@ revised narration. Future provider integrations must apply
 
 Schedule preferences currently use browser storage. They remain on the same browser/device, but do not run when the application is offline. An always-on scheduler must be connected to a hosted worker, cron task, n8n, or Make workflow.
 
+## Story database and device synchronization
+
+Stories and their review/published statuses now live in a shared server database.
+The cPanel Node application uses **SQLite**, through Node's built-in `node:sqlite`
+module; no MySQL server, database password, or additional database package is
+needed. The file defaults to `data/stories.sqlite` in the application directory.
+`app.js` anchors this path to the project root. When using `npm start` or the
+standalone server directly, the default is relative to the working directory;
+set `STORY_DATABASE_PATH` to an absolute path to keep it stable across deployments.
+The directory must be writable by the Node application and outside the public
+web directory. Keep it outside `dist/`, which is replaced on each build, and
+include it in server backups. Runtime database files are excluded from Git.
+
+Previously, there was **no active story database**: the Drizzle schema was empty,
+the Cloudflare D1 binding was disabled, and stories were written only to the
+creating browser's `localStorage` (`noor-stories`). A phone therefore loaded its
+own separate queue, regardless of how often it refreshed.
+
+The page now loads `/api/stories` without caching, refreshes when a mobile tab
+becomes visible or returns from browser history, and checks for updates every
+30 seconds while visible. Creation and status changes are confirmed only after
+the server saves them. Failed requests show a retry message.
+
+After deploying this update, open the site once in **each original browser and
+on the same domain where you created stories**. Existing browser stories are
+automatically imported, retaining the old local copy as a backup. Imports add
+missing stories without replacing the shared queue or rolling back statuses
+already saved on the server. Then refresh the phone. Do not clear the original
+browser's site data before importing it; the server cannot retrieve browser-only
+stories from another device.
+
+This is one shared studio per deployment, consistent with the existing app; it
+does not create separate queues for separate user accounts. Video files remain
+in the creating browser's IndexedDB, and schedule preferences remain device-local.
+The existing Cloudflare/Sites build uses its `DB` D1 binding (SQLite-compatible)
+instead of a local SQLite file; its migrations are in `drizzle/`.
+
 ## Requirements
 
 - Node.js 22.13 or newer
@@ -96,12 +133,12 @@ In **Setup Node.js App**:
 - Application root: `youtube_automation`
 - Application URL: your chosen domain or subdomain
 - Startup command: `npm start`, when your host supports npm start commands
-- Startup file: `dist/standalone/server.js`, when cPanel requires a JavaScript file
+- Startup file: `app.js`, when cPanel requires a JavaScript file
 
 If the cPanel screen asks for a startup **file** instead of a command, use:
 
 ```text
-dist/standalone/server.js
+app.js
 ```
 
 The production server automatically reads cPanel's `PORT` environment variable and listens on `0.0.0.0`.
@@ -128,6 +165,7 @@ ELEVENLABS_API_KEY=
 YOUTUBE_CLIENT_ID=
 YOUTUBE_CLIENT_SECRET=
 YOUTUBE_REFRESH_TOKEN=
+STORY_DATABASE_PATH=/home/CPANEL_USER/youtube_automation/data/stories.sqlite
 ```
 
 `OPENAI_API_KEY` enables narration and video creation. The three YouTube OAuth values enable uploading; the refresh token must include the `youtube.upload` OAuth scope. Add `YOUTUBE_API_KEY` to let the uploader search recent, high-view related public videos and automatically enrich descriptions and tags with recurring relevant phrases. Without an API key, discovery falls back to OAuth and gracefully keeps the original metadata if the token lacks a read scope.
@@ -142,6 +180,12 @@ npm run build
 ```
 
 Restart the Node.js application from cPanel after each deployment.
+
+For this storage update, use Node.js **22.13 or newer**, set the absolute
+`STORY_DATABASE_PATH` above using your actual cPanel username, and select `app.js`
+as the startup file. The table is created automatically on the first story
+request. Refresh the original desktop browser to import its old stories before
+refreshing the mobile browser. Keep the `data/` directory when updating the code.
 
 ### Urdu and English speech
 
@@ -186,6 +230,8 @@ npm run dev       # local development
 npm run build     # production build
 npm start         # production server
 npm run lint      # code checks
+npm test          # production build and story persistence/sync regression tests
+npm run test:stories # reuse an existing build for the regression tests
 ```
 
 ## Technology

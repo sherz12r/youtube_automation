@@ -38,3 +38,9 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# Runtime database (never include in Git or build output)
+/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
