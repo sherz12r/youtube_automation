@@ -36,7 +36,7 @@ Stories and their review/published statuses now live in a shared server database
 The cPanel Node application uses **SQLite**, through Node's built-in `node:sqlite`
 module; no MySQL server, database password, or additional database package is
 needed. The file defaults to `data/stories.sqlite` in the application directory.
-`app.js` anchors this path to the project root. When using `npm start` or the
+`app.cjs` (also loaded by `app.js`) anchors this path to the project root. When using `npm start` or the
 standalone server directly, the default is relative to the working directory;
 set `STORY_DATABASE_PATH` to an absolute path to keep it stable across deployments.
 The directory must be writable by the Node application and outside the public
@@ -133,15 +133,21 @@ In **Setup Node.js App**:
 - Application root: `youtube_automation`
 - Application URL: your chosen domain or subdomain
 - Startup command: `npm start`, when your host supports npm start commands
-- Startup file: `app.js`, when cPanel requires a JavaScript file
+- Startup file: `app.cjs`, when cPanel requires a JavaScript file
 
 If the cPanel screen asks for a startup **file** instead of a command, use:
 
 ```text
-app.js
+app.cjs
 ```
 
 The production server automatically reads cPanel's `PORT` environment variable and listens on `0.0.0.0`.
+
+Passenger loads the startup file with CommonJS `require()`. The `app.cjs` wrapper
+starts the generated ES-module server using dynamic `import()` without
+top-level `await`. The default `app.js` entry delegates to this wrapper for hosts
+that support requiring synchronous ES modules. Use `app.cjs` for compatibility
+with loaders that reject ES-module startup files.
 
 ### 3. Install and build
 
@@ -182,10 +188,25 @@ npm run build
 Restart the Node.js application from cPanel after each deployment.
 
 For this storage update, use Node.js **22.13 or newer**, set the absolute
-`STORY_DATABASE_PATH` above using your actual cPanel username, and select `app.js`
+`STORY_DATABASE_PATH` above using your actual cPanel username, and select `app.cjs`
 as the startup file. The table is created automatically on the first story
 request. Refresh the original desktop browser to import its old stories before
 refreshing the mobile browser. Keep the `data/` directory when updating the code.
+
+### Site stopped opening after the database update
+
+The first database release put a top-level `await` in `app.js`. Passenger's
+`require()` loader could fail with `ERR_REQUIRE_ASYNC_MODULE` before the site
+started. This is corrected in the startup wrappers. Pull the latest code, set
+the cPanel startup file to **`app.cjs`**, and restart the application. If the
+previous production build completed successfully, this startup-only correction
+does not require reinstalling dependencies or rebuilding. It does not change
+the database file or its schema.
+
+For hosts reporting `ERR_REQUIRE_ESM`, cPanel also documents the
+[CommonJS startup wrapper approach](https://support.cpanel.net/hc/en-us/articles/9215928211991-Instead-change-the-require-of-app-js-Error).
+If the site still fails, inspect the cPanel application error log; a missing
+`dist/standalone/server.js` means the production build has not completed.
 
 ### Urdu and English speech
 

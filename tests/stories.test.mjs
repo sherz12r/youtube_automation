@@ -5,9 +5,10 @@ import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-async function startServer(databasePath) {
-  const child = fork(new URL("./helpers/story-server.mjs", import.meta.url), [], {
+async function startServer(databasePath, startupFile, execArgv = []) {
+  const child = fork(new URL(startupFile ? "./helpers/passenger-loader.cjs" : "./helpers/story-server.mjs", import.meta.url), startupFile ? [resolve(startupFile)] : [], {
     silent: true,
+    execArgv,
     env: { ...process.env, STORY_DATABASE_PATH: databasePath },
   });
   let output = "";
@@ -130,4 +131,20 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
       assert.match((await response.json()).error, /could not be saved or loaded/);
     } finally { await unavailable.close(); }
   });
+
+  for (const startupFile of ["app.js", "app.cjs"]) {
+    await t.test(`Passenger can require ${startupFile} and serve existing stories`, async () => {
+      // The CommonJS entry also works when synchronous ESM require is disabled.
+      const passenger = await startServer(databasePath, startupFile,
+        startupFile === "app.cjs" ? ["--no-experimental-require-module"] : []);
+      try {
+        assert.equal((await passenger.request("/")).status, 200);
+        const response = await passenger.request();
+        assert.equal(response.status, 200);
+        const { stories } = await response.json();
+        assert.ok(stories.some(story => story.id === createdId));
+        assert.equal(stories.find(story => story.id === 1).status, "Published");
+      } finally { await passenger.close(); }
+    });
+  }
 });
