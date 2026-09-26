@@ -106,64 +106,96 @@ $env:PORT=8080
 npm start
 ```
 
-## Deploy on cPanel
+## Deploy on cPanel with Application Manager
 
-Your cPanel account must include **Setup Node.js App** or **Application Manager**, support Node.js 22+, and allow long-running Node applications. PHP-only shared hosting cannot run this project.
+Your hosting account must provide **Software > Application Manager**, Passenger,
+and Node.js **22.13 or newer**. Ask the hosting provider to install or select
+Node.js 22 if Application Manager is using an older runtime. PHP-only hosting
+cannot run this project.
+
+These instructions use a dedicated domain or subdomain with `/` as the base URL.
+The application files and SQLite database stay outside `public_html`; Passenger
+connects the selected domain to the Node.js application.
 
 ### 1. Upload the project
 
-Use cPanel Git Version Control to clone:
+Use **Files > Git Version Control** to clone:
 
 ```text
 https://github.com/sherz12r/youtube_automation.git
 ```
 
-Select the `master` branch. Alternatively, upload and extract a ZIP outside `public_html`, for example into:
+Select the `master` branch. Alternatively, upload and extract a ZIP outside
+`public_html`, for example into:
 
 ```text
 /home/CPANEL_USER/youtube_automation
 ```
 
-### 2. Create the Node application
+Replace `CPANEL_USER` in every command and path below with the actual cPanel
+account username.
 
-In **Setup Node.js App**:
+### 2. Install dependencies and build
 
-- Node.js version: `22` or the newest available version
-- Application mode: `Production`
-- Application root: `youtube_automation`
-- Application URL: your chosen domain or subdomain
-- Startup command: `npm start`, when your host supports npm start commands
-- Startup file: `app.cjs`, when cPanel requires a JavaScript file
-
-If the cPanel screen asks for a startup **file** instead of a command, use:
-
-```text
-app.cjs
-```
-
-The production server automatically reads cPanel's `PORT` environment variable and listens on `0.0.0.0`.
-
-Passenger loads the startup file with CommonJS `require()`. The `app.cjs` wrapper
-starts the generated ES-module server using dynamic `import()` without
-top-level `await`. The default `app.js` entry delegates to this wrapper for hosts
-that support requiring synchronous ES modules. Use `app.cjs` for compatibility
-with loaders that reject ES-module startup files.
-
-### 3. Install and build
-
-Open cPanel Terminal, enter the application directory, and run:
+Open **Advanced > Terminal** (or connect with SSH) and run:
 
 ```bash
 cd /home/CPANEL_USER/youtube_automation
 npm install
 npm run build
+mkdir -p data tmp
+test -f dist/standalone/server.js
 ```
 
-Do not use `npm install --omit=dev` before building because the build tools are development dependencies. After a successful build, restart the application from cPanel.
+If `node --version` is not Node 22, use the host's cPanel Node.js binary. A
+typical cPanel path is `/opt/cpanel/ea-nodejs22/bin`:
 
-### 4. Environment variables
+```bash
+export PATH=/opt/cpanel/ea-nodejs22/bin:$PATH
+node --version
+npm install
+npm run build
+```
 
-Add secrets in the cPanel Node.js application environment panel—never commit them to Git. Future integrations are expected to use variables such as:
+Do not use `npm install --omit=dev` before building because the build tools are
+development dependencies. The final `test` command should return silently; an
+error means the production build was not created.
+
+### 3. Register the application
+
+Open **Software > Application Manager**, click **Register Application**, and use:
+
+- **Application Name:** `noor-studio`
+- **Deployment Domain:** the domain or subdomain that will serve the app
+- **Base Application URL:** `/`
+- **Application Path:** `youtube_automation` (relative to the cPanel home directory)
+- **Deployment Environment:** `Production`
+
+Add the environment variables from the next section, then click **Deploy**.
+Application Manager uses the newest Node.js runtime configured by the hosting
+provider; it does not provide the same per-application version selector found in
+some cPanel Node.js interfaces.
+
+Passenger looks for `app.js` by default. This repository already includes
+`app.js`, which loads the Passenger-compatible `app.cjs` wrapper and then the
+built server. Do not enter `npm start`, set a startup file, or rename either
+wrapper when using Application Manager. Passenger supplies the listening port,
+so do not add a `PORT` environment variable.
+
+After registration, Application Manager may show **Enable Dependencies**. It can
+install the npm packages, but `npm run build` must still be run from Terminal as
+shown above.
+
+### 4. Add environment variables
+
+In Application Manager, edit `noor-studio` and select **Add Variable** for each
+value. At minimum, set an absolute database path:
+
+```text
+STORY_DATABASE_PATH=/home/CPANEL_USER/youtube_automation/data/stories.sqlite
+```
+
+Add provider secrets only for the features being used:
 
 ```text
 OPENAI_API_KEY=
@@ -171,57 +203,79 @@ ELEVENLABS_API_KEY=
 YOUTUBE_CLIENT_ID=
 YOUTUBE_CLIENT_SECRET=
 YOUTUBE_REFRESH_TOKEN=
-STORY_DATABASE_PATH=/home/CPANEL_USER/youtube_automation/data/stories.sqlite
+YOUTUBE_API_KEY=
 ```
 
-`OPENAI_API_KEY` enables narration and video creation. The three YouTube OAuth values enable uploading; the refresh token must include the `youtube.upload` OAuth scope. Add `YOUTUBE_API_KEY` to let the uploader search recent, high-view related public videos and automatically enrich descriptions and tags with recurring relevant phrases. Without an API key, discovery falls back to OAuth and gracefully keeps the original metadata if the token lacks a read scope.
+Keep secrets in cPanel only; never add them to GitHub or commit them. The three
+YouTube OAuth values enable uploads, and the refresh token must include the
+`youtube.upload` scope. `YOUTUBE_API_KEY` enables related-video discovery for
+description and tag enrichment. Without it, discovery falls back to OAuth and
+keeps the original metadata if the token lacks a read scope.
 
-### 5. Updating the cPanel deployment
+Save the variables and deploy the application again. If Application Manager does
+not show environment-variable controls, ask the hosting provider to enable the
+Apache `mod_env` module.
+
+### 5. Restart and verify
+
+Passenger restarts an Application Manager app when this file is created or its
+timestamp changes:
+
+```bash
+cd /home/CPANEL_USER/youtube_automation
+mkdir -p tmp
+touch tmp/restart.txt
+```
+
+Open the deployment domain over HTTPS and create a test story. The first story
+request creates the SQLite table automatically. Confirm that
+`data/stories.sqlite` exists and keep the entire `data/` directory in server
+backups. Do not put the database in `dist/`, because that directory is replaced
+by each build.
+
+After deploying the shared-database update, open the site once in each original
+browser on the original domain before clearing browser data. This imports any
+stories that were previously stored only in that browser.
+
+### 6. Update the deployment
 
 ```bash
 cd /home/CPANEL_USER/youtube_automation
 git pull origin master
 npm install
 npm run build
+mkdir -p tmp
+touch tmp/restart.txt
 ```
 
-Restart the Node.js application from cPanel after each deployment.
+Keep `data/` in place during every update. If dependencies did not change,
+`npm install` can be skipped.
 
-For this storage update, use Node.js **22.13 or newer**, set the absolute
-`STORY_DATABASE_PATH` above using your actual cPanel username, and select `app.cjs`
-as the startup file. The table is created automatically on the first story
-request. Refresh the original desktop browser to import its old stories before
-refreshing the mobile browser. Keep the `data/` directory when updating the code.
+### Troubleshooting
 
-### Site stopped opening after the database update
+- Check `/home/CPANEL_USER/youtube_automation/logs/` for Passenger errors.
+- A missing `dist/standalone/server.js` means `npm run build` did not complete.
+- `ERR_REQUIRE_ASYNC_MODULE` or `ERR_REQUIRE_ESM` usually means the server has old
+  wrappers or is running an unsupported Node.js version. Pull the latest code,
+  confirm `node --version` is at least `22.13`, rebuild, and touch
+  `tmp/restart.txt`.
+- A database-open error usually means `STORY_DATABASE_PATH` is incorrect or the
+  application user cannot write to `data/`.
+- If **Software > Application Manager** is missing, the hosting provider must
+  enable Application Manager and Passenger for the account.
 
-The first database release put a top-level `await` in `app.js`. Passenger's
-`require()` loader could fail with `ERR_REQUIRE_ASYNC_MODULE` before the site
-started. This is corrected in the startup wrappers. Pull the latest code, set
-the cPanel startup file to **`app.cjs`**, and restart the application. If the
-previous production build completed successfully, this startup-only correction
-does not require reinstalling dependencies or rebuilding. It does not change
-the database file or its schema.
-
-For hosts reporting `ERR_REQUIRE_ESM`, cPanel also documents the
-[CommonJS startup wrapper approach](https://support.cpanel.net/hc/en-us/articles/9215928211991-Instead-change-the-require-of-app-js-Error).
-If the site still fails, inspect the cPanel application error log; a missing
-`dist/standalone/server.js` means the production build has not completed.
+See cPanel's official
+[Application Manager documentation](https://docs.cpanel.net/cpanel/software/application-manager/)
+and [Node.js installation guide](https://docs.cpanel.net/knowledge-base/web-services/how-to-install-a-node.js-application/)
+for host-level requirements and Passenger details.
 
 ### Urdu and English speech
 
-The Listen buttons generate audio on the server, so visitors do not need
-Urdu or English system voices installed on their devices. Long scripts are
-split into provider-safe narration chunks and returned as one complete audio
-file, so the app does not impose a story-length cap. Add the following
-environment variable in cPanel's **Setup Node.js App** screen:
-
-```text
-OPENAI_API_KEY=your_api_key
-```
-
-Keep this value in cPanel only. Do not add it to GitHub or commit it to the
-repository. Restart the Node.js application after adding or changing it.
+The Listen buttons generate audio on the server, so visitors do not need Urdu or
+English system voices installed on their devices. Long scripts are split into
+provider-safe narration chunks and returned as one complete audio file. Add
+`OPENAI_API_KEY` in **Software > Application Manager**, save the change, and
+restart the application by touching `tmp/restart.txt`.
 
 ## Scheduled production workflow
 

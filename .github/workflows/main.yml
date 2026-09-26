@@ -1,4 +1,4 @@
-name: Build and deploy to cPanel
+name: Deploy to cPanel
 
 on:
   push:
@@ -6,71 +6,72 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Do not interrupt an upload or let two deployments modify the app together.
 concurrency:
   group: cpanel-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
+    timeout-minutes: 20
     steps:
-      - name: Check out source
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.23.2"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build standalone production app
+      - name: Prepare application files
+        shell: python
         run: |
-          npm run build
-          cp app.js dist/standalone/app.js
-          cp -a \
-            node_modules/react \
-            node_modules/react-dom \
-            node_modules/react-server-dom-webpack \
-            node_modules/scheduler \
-            node_modules/acorn-loose \
-            node_modules/neo-async \
-            node_modules/webpack-sources \
-            dist/standalone/node_modules/
+          from pathlib import Path, PurePosixPath
+          import subprocess
 
-      - name: Verify deployable output
-        run: |
-          test -f dist/standalone/app.js
-          test -f dist/standalone/server.js
-          test -f dist/standalone/node_modules/react/package.json
-          test -f dist/standalone/node_modules/react-dom/package.json
-          test -f dist/standalone/node_modules/react-server-dom-webpack/package.json
+          # Sync the current tracked application, not just the latest commit diff.
+          # This also recovers files from failed or superseded deployments.
+          tracked = subprocess.check_output(["git", "ls-files", "-z"])
+          files = []
+          for raw in tracked.split(b"\0"):
+              if not raw:
+                  continue
+              path = PurePosixPath(raw.decode("utf-8"))
+              application_file = path.parts[0] in {"seobot", "templates", "static", "migrations"}
+              application_file |= len(path.parts) == 1 and (path.suffix == ".py" or path.name in {"requirements.txt", "requirements-cpanel.txt"})
+              if application_file and "__pycache__" not in path.parts and path.suffix != ".pyc":
+                  files.append(raw)
+          if b"passenger_wsgi.py" not in files:
+              raise SystemExit("Missing tracked passenger_wsgi.py; deployment stopped.")
+          Path("deploy_files.txt").write_bytes(b"\0".join(files) + b"\0")
+          print(f"Prepared {len(files)} application files.")
 
-      # Only dist/standalone contents are sent to cPanel.
-      # Source code, Git metadata and workflow files remain on GitHub.
-      - name: Deploy production build only
+      - name: Deploy application files
         uses: sherz12r/deploy@master
         with:
-          path: dist/standalone/
-          switches: -avzr
+          # Checksums transfer only changed content. No deletion of server data.
+          # switches: -avzc --exclude=".git/" --exclude=".github/" --exclude=".gitignore" --exclude="readme.md" --exclude=".claude" --from0 --files-from=deploy_files.txt
+          switches: -avzr --exclude=".git/" --exclude=".github/" --exclude=".gitignore" --exclude="readme.md" --exclude=".claude"
           remote_path: ${{ secrets.SERVER_PATH }}/
           remote_host: ${{ secrets.SERVER }}
           remote_user: ${{ secrets.USER_NAME }}
           remote_key: ${{ secrets.SSH_KEY }}
           remote_key_pass: ${{ secrets.SSH_KEY_PASS }}
 
-      - name: Restart cPanel Node application
+      - name: Restart cPanel Python application
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_ROOT: ${{ secrets.SERVER_PATH }}
         with:
           host: ${{ secrets.SERVER }}
           username: ${{ secrets.USER_NAME }}
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_KEY_PASS }}
+          envs: APP_ROOT
           script: |
-            mkdir -p "${{ secrets.SERVER_PATH }}/tmp"
-            touch "${{ secrets.SERVER_PATH }}/tmp/restart.txt"
+            set -eu
+            test -n "$APP_ROOT"
+            cd -- "$APP_ROOT"
+            test -f passenger_wsgi.py
+            mkdir -p tmp
+            touch tmp/restart.txt
+            echo "Passenger restart requested; it will take effect on the next request."
