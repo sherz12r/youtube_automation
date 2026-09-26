@@ -9,7 +9,7 @@ async function startServer(databasePath, startupFile, execArgv = []) {
   const child = fork(new URL(startupFile ? "./helpers/passenger-loader.cjs" : "./helpers/story-server.mjs", import.meta.url), startupFile ? [resolve(startupFile)] : [], {
     silent: true,
     execArgv,
-    env: { ...process.env, STORY_DATABASE_PATH: databasePath },
+    env: { ...process.env, STORY_DATABASE_PATH: databasePath, OPENAI_API_KEY: "" },
   });
   let output = "";
   child.stdout.on("data", data => { output += data; });
@@ -61,6 +61,12 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
     assert.equal(response.headers.get("cdn-cache-control"), "no-store");
     initial = (await response.json()).stories;
     assert.equal(initial.length, 3);
+  });
+
+  await t.test("automatic generation reports missing server configuration safely", async () => {
+    const response = await server.request("/api/stories/generate", "POST", {});
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /OPENAI_API_KEY/);
   });
 
   await t.test("creation is visible from an independent mobile request without browser storage", async () => {

@@ -48,6 +48,15 @@ jobs:
                   test -n "$APP_ROOT"
                   cd -- "$APP_ROOT"
                   test -f app.cjs
+                  if command -v npm >/dev/null 2>&1; then
+                    npm run build
+                  elif [ -x /opt/cpanel/ea-nodejs22/bin/npm ]; then
+                    export PATH="/opt/cpanel/ea-nodejs22/bin:$PATH"
+                    npm run build
+                  else
+                    echo "Node.js 22 npm was not found on the cPanel server." >&2
+                    exit 1
+                  fi
                   test -f dist/standalone/server.js
                   mkdir -p tmp
                   touch tmp/restart.txt

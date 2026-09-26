@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { initialStories } from "../lib/story-defaults";
-import { importBrowserStories, storyRequest } from "../lib/story-client";
+import { generateStoryRequest, importBrowserStories, storyRequest } from "../lib/story-client";
 import type { Story } from "../lib/stories";
 
 export function useStories() {
@@ -73,6 +73,23 @@ export function useStories() {
   }, [loaded]);
 
   const create = (story: Story) => save("POST", { story });
+  const generate = useCallback(async () => {
+    if (!loaded || writing.current) throw new Error("Wait for stories to finish syncing, then retry.");
+    writing.current = true;
+    ++requestVersion.current;
+    setSaving(true);
+    try {
+      const result = await generateStoryRequest();
+      if (mounted.current) { setStories(result.stories); setError(""); }
+      return result;
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "Story generation failed. Please retry.");
+      throw cause;
+    } finally {
+      writing.current = false;
+      if (mounted.current) setSaving(false);
+    }
+  }, [loaded]);
   const updateStatus = (id: number, status: Story["status"], progress = 100) => save("PATCH", { id, status, progress });
-  return { stories, loaded, saving, error, refresh, create, updateStatus };
+  return { stories, loaded, saving, error, refresh, create, generate, updateStatus };
 }

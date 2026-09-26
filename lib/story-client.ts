@@ -18,6 +18,22 @@ export async function storyRequest(init: RequestInit = {}): Promise<StoryRespons
   return payload;
 }
 
+export async function generateStoryRequest(): Promise<StoryResponse> {
+  const response = await fetch("/api/stories/generate", {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal: AbortSignal.timeout(180000),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "A complete new story could not be generated. Please retry.");
+  if (!Array.isArray(payload.stories) || !payload.stories.every(isStoredStory) || !payload.stories.length || !payload.storyId) {
+    throw new Error("The story generator returned an invalid result. Please retry.");
+  }
+  return payload;
+}
+
 export async function importBrowserStories() {
   let raw: string | null = null;
   try {

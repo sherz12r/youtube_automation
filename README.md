@@ -8,15 +8,13 @@ The religious verification and publishing steps intentionally require human appr
 
 ## Included
 
-Story creation currently selects from the bilingual draft library in `app/page.tsx`;
-it does not call an AI story-generation provider. Each draft includes a spoken
-introduction, the background needed for its selected narrative, chronological
-transitions, and an ending. Musa's narrative follows his birth through the rescue
-from Pharaoh, rather than claiming to cover his entire later life. The same text
-is used for reading, sharing, narration, and video. Existing saved entries use
-the current library text; previously rendered videos must be recreated to include
-revised narration. Future provider integrations must apply
-`prompts/islamic-youtube-story-writer.md`.
+Story creation uses the OpenAI Responses API to select a new topic automatically,
+exclude topics already in the shared queue, and produce complete equivalent Urdu
+and English narratives with source notes. Generated scripts are saved in SQLite
+with the story record and are reused for reading, sharing, narration, and video.
+The bundled bilingual library remains available for starter stories. Every new
+provider-backed draft applies `prompts/islamic-youtube-story-writer.md` and remains
+in **Needs review** status until a person verifies and approves it.
 
 - Story research and review queue
 - Qur'an, translation, and religious-claim verification indicators
@@ -199,6 +197,7 @@ Add provider secrets only for the features being used:
 
 ```text
 OPENAI_API_KEY=
+OPENAI_STORY_MODEL=gpt-6-astra
 OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
 OPENAI_IMAGE_QUALITY=low
 ELEVENLABS_API_KEY=
@@ -302,8 +301,10 @@ All provider-backed story writing must follow
 [`prompts/islamic-youtube-story-writer.md`](prompts/islamic-youtube-story-writer.md).
 That specification is the canonical prompt for accuracy, sourcing, Islamic adab,
 Urdu narration, titles, thumbnails, descriptions, and output structure. The
-current starter stories are bundled drafts; a future research/writing provider
-must load this prompt instead of duplicating or weakening its rules in code.
+automatic generator loads this file directly, excludes titles already in the
+shared queue, rejects duplicate or summary-length output, and saves the complete
+Urdu and English scripts with their source notes. Starter stories remain bundled
+for the initial queue.
 
 For real unattended scheduling, configure a cPanel cron job or an external workflow service to call a protected backend endpoint. The recommended production behavior is:
 

@@ -9,6 +9,14 @@ export type Story = {
   sources: number;
   progress: number;
   color: string;
+  bodyUr?: string;
+  bodyEn?: string;
+  sourceUr?: string;
+  sourceEn?: string;
+  supportingUr?: string;
+  supportingEn?: string;
+  sourceSummaryUr?: string;
+  sourceSummaryEn?: string;
 };
 
 export const validStatuses: Story["status"][] = ["Needs review", "Approved", "Ready", "Published"];
@@ -20,6 +28,10 @@ export function isStoredStory(value: unknown): value is Story {
   return Number.isSafeInteger(story.id) && story.id > 0 && story.id < Number.MAX_SAFE_INTEGER
     && [story.title, story.subtitle, story.titleEn, story.subtitleEn, story.duration, story.color]
       .every(text => typeof text === "string" && text.trim().length > 0 && text.length <= 10000)
+    && [story.bodyUr, story.bodyEn].every(text => text === undefined || (typeof text === "string" && text.trim().length > 0 && text.length <= 50000))
+    && ((story.bodyUr === undefined && story.bodyEn === undefined) || (story.bodyUr !== undefined && story.bodyEn !== undefined))
+    && [story.sourceUr, story.sourceEn, story.supportingUr, story.supportingEn, story.sourceSummaryUr, story.sourceSummaryEn]
+      .every(text => text === undefined || (typeof text === "string" && text.trim().length > 0 && text.length <= 5000))
     && validStatuses.includes(story.status)
     && Number.isSafeInteger(story.sources) && story.sources >= 0 && story.sources <= 10000
     && Number.isFinite(story.progress) && story.progress >= 0 && story.progress <= 100;

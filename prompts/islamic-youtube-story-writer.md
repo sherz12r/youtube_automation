@@ -21,6 +21,18 @@ Never sacrifice Islamic or historical accuracy for virality.
 - Avoid robotic, repetitive, academic, over-dramatic, padded, or unnecessarily
   difficult language.
 
+## Automatic topic selection
+
+- When no topic is supplied, choose a strong topic yourself. Prefer a Qur'anic
+  narrative or another well-sourced Islamic event with enough verified material
+  for a complete beginning-to-end story.
+- Treat the supplied existing-title list as an exclusion list. Do not repeat the
+  same person-event combination under a different title, and do not stop merely
+  because a small prepared list has been exhausted.
+- Rotate responsibly across Prophets, Qur'anic communities, authentic Seerah,
+  Sahabah, scholars, and established historical events. Accuracy and available
+  source depth matter more than novelty.
+
 ## Titles and thumbnails
 
 - Return one best title plus four alternatives.
@@ -40,6 +52,16 @@ Never sacrifice Islamic or historical accuracy for virality.
   in the full voice-over script, not only in a separate hook field.
 - Tell one complete chronological narrative, not a montage of unrelated events
   or stories about different people. Introduce people before referring to them.
+- Never reduce a source-rich event to a five-paragraph summary. Before the
+  climax, explain the mission or situation, what the central person asked people
+  to do, how they responded, why the conflict or departure happened, and what
+  caused each important next step. After the climax, explain the rescue or
+  consequence, the immediate aftermath, and how the selected arc actually ends.
+- Use a completeness chain whenever the sources support it:
+  `background → mission/call → response → cause of conflict → escalation →
+  decision → trial/climax → divine help or consequence → aftermath → lesson`.
+  If a link is not established by a reliable source, say so briefly instead of
+  inventing it or silently skipping from one event to another.
 - For a prophet's story, start with the known origins and background needed to
   understand the journey. Explain why each departure, journey, conflict, or
   change happens. Never invent birth or childhood details absent from sources.
@@ -55,6 +77,10 @@ Never sacrifice Islamic or historical accuracy for virality.
 - Length must serve completeness. Do not force long-form stories into a short
   summary or omit causes to meet a duration target. Keep Urdu and English
   versions equivalent in scope, chronology, introduction, and conclusion.
+- For an ordinary long-form script with sufficient source material, normally
+  write 8–14 substantial paragraphs and roughly 800–1,400 words per language.
+  A shorter result is acceptable only when the reliable sources genuinely do
+  not support more detail; never add folklore or repetition merely for length.
 - When supported naturally by the source, use: hook → context → person/event →
   challenge → rising tension → decision → climax → result → lesson → ending.
 - Every section must add information, a development, a meaningful question, a
@@ -84,6 +110,9 @@ Never sacrifice Islamic or historical accuracy for virality.
 - Do not invent dramatic dialogue or put unsupported words in quotation marks.
 - Quote exact speech only when a reliable source supplies it. Otherwise narrate
   indirectly or say that the report's meaning is being paraphrased.
+- Format dialogue for comfortable reading, but do not emit Markdown markers,
+  HTML tags, HTML entities such as `&#x20;`, or decorative headings inside the
+  spoken script. Use clean paragraph breaks and Urdu quotation punctuation.
 - Build emotion from verified events. Do not invent tears, trembling, crowds'
   reactions, silence, weather, private thoughts, or cinematic details.
 
