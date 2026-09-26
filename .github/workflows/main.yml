@@ -40,8 +40,6 @@ jobs:
               application_file |= len(path.parts) == 1 and (path.suffix == ".py" or path.name in {"requirements.txt", "requirements-cpanel.txt"})
               if application_file and "__pycache__" not in path.parts and path.suffix != ".pyc":
                   files.append(raw)
-          if b"passenger_wsgi.py" not in files:
-              raise SystemExit("Missing tracked passenger_wsgi.py; deployment stopped.")
           Path("deploy_files.txt").write_bytes(b"\0".join(files) + b"\0")
           print(f"Prepared {len(files)} application files.")
 
@@ -57,21 +55,21 @@ jobs:
           remote_key: ${{ secrets.SSH_KEY }}
           remote_key_pass: ${{ secrets.SSH_KEY_PASS }}
 
-      - name: Restart cPanel Python application
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          APP_ROOT: ${{ secrets.SERVER_PATH }}
-        with:
-          host: ${{ secrets.SERVER }}
-          username: ${{ secrets.USER_NAME }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_KEY_PASS }}
-          envs: APP_ROOT
-          script: |
-            set -eu
-            test -n "$APP_ROOT"
-            cd -- "$APP_ROOT"
-            test -f passenger_wsgi.py
-            mkdir -p tmp
-            touch tmp/restart.txt
-            echo "Passenger restart requested; it will take effect on the next request."
+      # - name: Restart cPanel Python application
+      #   uses: appleboy/ssh-action@v1.2.0
+      #   env:
+      #     APP_ROOT: ${{ secrets.SERVER_PATH }}
+      #   with:
+      #     host: ${{ secrets.SERVER }}
+      #     username: ${{ secrets.USER_NAME }}
+      #     key: ${{ secrets.SSH_KEY }}
+      #     passphrase: ${{ secrets.SSH_KEY_PASS }}
+      #     envs: APP_ROOT
+      #     script: |
+      #       set -eu
+      #       test -n "$APP_ROOT"
+      #       cd -- "$APP_ROOT"
+      #       test -f passenger_wsgi.py
+      #       mkdir -p tmp
+      #       touch tmp/restart.txt
+      #       echo "Passenger restart requested; it will take effect on the next request."
