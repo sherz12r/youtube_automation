@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildSeoMetadata, rankTrendVideos, type TrendVideo } from "../../../../lib/youtube-seo";
 
 async function getAccessToken() {
   const clientId=process.env.YOUTUBE_CLIENT_ID, clientSecret=process.env.YOUTUBE_CLIENT_SECRET, refreshToken=process.env.YOUTUBE_REFRESH_TOKEN;
@@ -13,30 +14,30 @@ const blockedMediaPhrases=[/\bNoor\s*Studio\b/gi,/نور\s*اسٹوڈیو/g];
 function cleanMediaText(value:string){return blockedMediaPhrases.reduce((text,pattern)=>text.replace(pattern,""),value).replace(/[ \t]{2,}/g," ").replace(/\s+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim()}
 function mediaText(value:string,fallback="Islamic story"){return cleanMediaText(value)||fallback}
 
-const seoStopWords=new Set(["about","after","again","allah","also","and","are","before","best","for","from","had","has","have","how","into","islamic","its","our","story","that","the","their","this","through","video","was","were","what","when","with","you","your","ایک","اور","اس","سے","کا","کی","کے","کو","میں","نے","یہ","وہ"]);
-function relatedPhrases(items:Array<{snippet?:{title?:string;description?:string}}>) {
- const counts=new Map<string,number>();
- for(const item of items){
-  const text=`${item.snippet?.title||""} ${item.snippet?.description||""}`.toLowerCase();
-  const words=(text.match(/[\p{L}\p{N}]+/gu)||[]).filter(word=>word.length>2&&!seoStopWords.has(word));
-  const phrases=new Set<string>();
-  words.forEach(word=>phrases.add(word));
-  for(let index=0;index<words.length-1;index+=1)phrases.add(`${words[index]} ${words[index+1]}`);
-  phrases.forEach(phrase=>counts.set(phrase,(counts.get(phrase)||0)+1));
- }
- return [...counts.entries()].filter(([,count])=>count>=2).sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length).map(([phrase])=>phrase).slice(0,8);
+async function youtubeGet<T>(path:string,params:URLSearchParams,accessToken:string,apiKey?:string){
+ if(apiKey)params.set("key",apiKey);
+ const response=await fetch(`https://www.googleapis.com/youtube/v3/${path}?${params}`,apiKey?{}:{headers:{Authorization:`Bearer ${accessToken}`}});
+ if(!response.ok)throw new Error(`YouTube trend lookup failed (${response.status}).`);
+ return await response.json() as T;
 }
-async function findRelatedTrendingPhrases(accessToken:string,title:string){
+
+async function searchRecentVideoIds(accessToken:string,title:string,days:number){
+ const language=/[\u0600-\u06ff]/.test(title)?"ur":"en",publishedAfter=new Date(Date.now()-days*24*60*60*1000).toISOString();
+ const params=new URLSearchParams({part:"snippet",type:"video",q:title.split("|")[0].trim(),order:"viewCount",publishedAfter,maxResults:"25",relevanceLanguage:language,regionCode:process.env.YOUTUBE_REGION_CODE||(language==="ur"?"PK":"US"),safeSearch:"strict"});
+ const result=await youtubeGet<{items?:Array<{id?:{videoId?:string}}>} >("search",params,accessToken,process.env.YOUTUBE_API_KEY);
+ return [...new Set((result.items||[]).map(item=>item.id?.videoId).filter((id):id is string=>Boolean(id)))];
+}
+
+async function findRecentTrendVideos(accessToken:string,title:string){
  try{
-  const publishedAfter=new Date(Date.now()-365*24*60*60*1000).toISOString();
-  const language=/[\u0600-\u06ff]/.test(title)?"ur":"en";
-  const params=new URLSearchParams({part:"snippet",type:"video",q:title,order:"viewCount",publishedAfter,maxResults:"12",relevanceLanguage:language,safeSearch:"strict"});
-  const apiKey=process.env.YOUTUBE_API_KEY;if(apiKey)params.set("key",apiKey);
-  const response=await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`,apiKey?{}:{headers:{Authorization:`Bearer ${accessToken}`}});
-  if(!response.ok)return [];
-  const result=await response.json() as {items?:Array<{snippet?:{title?:string;description?:string}}>};
-  return relatedPhrases(result.items||[]);
- }catch{return []}
+  let windowDays=180,ids=await searchRecentVideoIds(accessToken,title,windowDays);
+  if(ids.length<8){windowDays=365;ids=await searchRecentVideoIds(accessToken,title,windowDays)}
+  if(!ids.length)return{videos:[] as TrendVideo[],windowDays};
+  const params=new URLSearchParams({part:"snippet,statistics",id:ids.join(","),maxResults:"25"});
+  const result=await youtubeGet<{items?:Array<{snippet?:{title?:string;description?:string;tags?:string[];publishedAt?:string};statistics?:{viewCount?:string}}>} >("videos",params,accessToken,process.env.YOUTUBE_API_KEY);
+  const videos=(result.items||[]).map(item=>({title:item.snippet?.title||"",description:item.snippet?.description||"",tags:item.snippet?.tags||[],publishedAt:item.snippet?.publishedAt||new Date(0).toISOString(),viewCount:Number(item.statistics?.viewCount||0)})).filter(video=>video.title&&video.viewCount>0);
+  return{videos:rankTrendVideos(videos),windowDays};
+ }catch{return{videos:[] as TrendVideo[],windowDays:0}}
 }
 
 export async function POST(request:NextRequest){
@@ -44,16 +45,15 @@ export async function POST(request:NextRequest){
   const {title,description,tags,fileSize,mimeType}=await request.json() as {title?:string;description?:string;tags?:string;fileSize?:number;mimeType?:string};
   if(!fileSize||fileSize<1)return NextResponse.json({error:"A generated video is required."},{status:400});
   const accessToken=await getAccessToken();
-  const cleanTitle=mediaText(String(title||"Islamic story")).slice(0,100),trendPhrases=await findRelatedTrendingPhrases(accessToken,cleanTitle);
-  const baseDescription=cleanMediaText(String(description||"")),topicLabel=/[\u0600-\u06ff]/.test(cleanTitle)?"متعلقہ موضوعات":"Related topics";
-  const optimizedDescription=trendPhrases.length?`${baseDescription}\n\n${topicLabel}: ${trendPhrases.join(", ")}`:baseDescription;
-  const baseTags=cleanMediaText(String(tags||"")).split(",").map(tag=>tag.trim()).filter(Boolean),optimizedTags=[...new Set([...baseTags,...trendPhrases])].slice(0,30);
-  const metadata={snippet:{title:cleanTitle,description:optimizedDescription.slice(0,5000),tags:optimizedTags,categoryId:"22"},status:{privacyStatus:"public",selfDeclaredMadeForKids:false}};
+  const cleanTitle=mediaText(String(title||"Islamic story")).slice(0,100),baseDescription=cleanMediaText(String(description||""));
+  const baseTags=cleanMediaText(String(tags||"")).split(",").map(tag=>tag.trim()).filter(Boolean);
+  const trendResearch=await findRecentTrendVideos(accessToken,cleanTitle),seo=buildSeoMetadata(cleanTitle,baseDescription,baseTags,trendResearch.videos);
+  const metadata={snippet:{title:seo.title,description:seo.description,tags:seo.tags,categoryId:"22"},status:{privacyStatus:"public",selfDeclaredMadeForKids:false,containsSyntheticMedia:true}};
   const response=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=resumable",{method:"POST",headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Length":String(fileSize),"X-Upload-Content-Type":mimeType||"video/webm"},body:JSON.stringify(metadata)});
   if(!response.ok)return NextResponse.json({error:await response.text()||"YouTube could not start the upload."},{status:response.status});
   const uploadUrl=response.headers.get("location");
   if(!uploadUrl)return NextResponse.json({error:"YouTube did not return an upload session."},{status:502});
-  return NextResponse.json({uploadUrl,optimizedKeywords:trendPhrases});
+  return NextResponse.json({uploadUrl,optimizedTitle:seo.title,optimizedDescription:seo.description,optimizedKeywords:seo.keywords,trendWindowDays:trendResearch.windowDays,analyzedVideos:trendResearch.videos.length});
  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"YouTube upload could not start."},{status:500})}
 }
 

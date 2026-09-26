@@ -1,75 +1,54 @@
-name: Deploy to cPanel
-
+name: deploy
 on:
-  push:
-    branches:
-      - master
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-# Do not interrupt an upload or let two deployments modify the app together.
-concurrency:
-  group: cpanel-production
-  cancel-in-progress: false
-
+    push:
+        branches:
+          - master
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+          - name: checkout code
+            uses: actions/checkout@v3
+            with:
+                fetch-depth: 0
+          - name: get changed files
+            id: changed-files
+            run: |
+              # Get only added (A), modified (M), or renamed (R) files
+              git diff --name-status HEAD^ | awk '$1 != "D" {print $2}' |
+              grep -vEi '^\.git/|^\.github/|^bootstrap/|^\.editorconfig$|^\.gitattributes$|^\.styleci\.yml$|^CHANGELOG\.md$|^artisan package\.json$|^phpunit\.xml$|^webpack\.mix\.js$|^\.env-example$|^\.gitignore$|^\.htaccess$|^composer\.json$|^composer\.lock$|^readme\.md$|^web\.config$|^storage/' > changed_files.txt || true
 
-      - name: Prepare application files
-        shell: python
-        run: |
-          from pathlib import Path, PurePosixPath
-          import subprocess
+              echo "files=$(cat changed_files.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
 
-          # Sync the current tracked application, not just the latest commit diff.
-          # This also recovers files from failed or superseded deployments.
-          tracked = subprocess.check_output(["git", "ls-files", "-z"])
-          files = []
-          for raw in tracked.split(b"\0"):
-              if not raw:
-                  continue
-              path = PurePosixPath(raw.decode("utf-8"))
-              application_file = path.parts[0] in {"seobot", "templates", "static", "migrations"}
-              application_file |= len(path.parts) == 1 and (path.suffix == ".py" or path.name in {"requirements.txt", "requirements-cpanel.txt"})
-              if application_file and "__pycache__" not in path.parts and path.suffix != ".pyc":
-                  files.append(raw)
-          Path("deploy_files.txt").write_bytes(b"\0".join(files) + b"\0")
-          print(f"Prepared {len(files)} application files.")
+          - name: deploy changed files only
+            uses: sherz12r/deploy@master
+            with:
+                switches: -avz --files-from=changed_files.txt
+                # switches: -avz --no-perms --no-owner --no-group --exclude=".git" --exclude=".github/" --exclude="bootstrap" --exclude=".editorconfig" --exclude=".gitattributes" --exclude=".styleci.yml" --exclude="CHANGELOG.md" --exclude="artisan package.json" --exclude="phpunit.xml" --exclude="webpack.mix.js" --exclude=".env-example" --exclude=".gitignore" --exclude=".htaccess" --exclude="composer.json" --exclude="composer.lock" --exclude="readme.md" --exclude="web.config" --exclude="storage"
+                # path: /
+                remote_path: ${{ secrets.SERVER_PATH }}/
+                remote_host: ${{ secrets.SERVER }}
+                # remote_port: ${{ secrets.DEPLOY_PORT }}
+                remote_user: ${{ secrets.USER_NAME }}
+                remote_key: ${{ secrets.SSH_KEY }}
+                remote_key_pass: ${{ secrets.SSH_KEY_PASS }}
 
-      - name: Deploy application files
-        uses: sherz12r/deploy@master
-        with:
-          # Checksums transfer only changed content. No deletion of server data.
-          # switches: -avzc --exclude=".git/" --exclude=".github/" --exclude=".gitignore" --exclude="readme.md" --exclude=".claude" --from0 --files-from=deploy_files.txt
-          switches: -avzr --exclude=".git/" --exclude=".github/" --exclude=".gitignore" --exclude="readme.md" --exclude=".claude"
-          remote_path: ${{ secrets.SERVER_PATH }}/
-          remote_host: ${{ secrets.SERVER }}
-          remote_user: ${{ secrets.USER_NAME }}
-          remote_key: ${{ secrets.SSH_KEY }}
-          remote_key_pass: ${{ secrets.SSH_KEY_PASS }}
-
-      # - name: Restart cPanel Python application
-      #   uses: appleboy/ssh-action@v1.2.0
-      #   env:
-      #     APP_ROOT: ${{ secrets.SERVER_PATH }}
-      #   with:
-      #     host: ${{ secrets.SERVER }}
-      #     username: ${{ secrets.USER_NAME }}
-      #     key: ${{ secrets.SSH_KEY }}
-      #     passphrase: ${{ secrets.SSH_KEY_PASS }}
-      #     envs: APP_ROOT
-      #     script: |
-      #       set -eu
-      #       test -n "$APP_ROOT"
-      #       cd -- "$APP_ROOT"
-      #       test -f passenger_wsgi.py
-      #       mkdir -p tmp
-      #       touch tmp/restart.txt
-      #       echo "Passenger restart requested; it will take effect on the next request."
+          - name: restart cPanel application
+            uses: appleboy/ssh-action@v1.2.0
+            env:
+                APP_ROOT: ${{ secrets.SERVER_PATH }}
+            with:
+                host: ${{ secrets.SERVER }}
+                username: ${{ secrets.USER_NAME }}
+                key: ${{ secrets.SSH_KEY }}
+                passphrase: ${{ secrets.SSH_KEY_PASS }}
+                envs: APP_ROOT
+                script: |
+                  set -eu
+                  test -n "$APP_ROOT"
+                  cd -- "$APP_ROOT"
+                  test -f app.cjs
+                  test -f dist/standalone/server.js
+                  mkdir -p tmp
+                  touch tmp/restart.txt
+                  echo "Passenger restart requested."

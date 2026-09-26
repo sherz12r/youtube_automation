@@ -199,22 +199,30 @@ Add provider secrets only for the features being used:
 
 ```text
 OPENAI_API_KEY=
+OPENAI_IMAGE_MODEL=gpt-image-2.5-flare
+OPENAI_IMAGE_QUALITY=low
 ELEVENLABS_API_KEY=
 YOUTUBE_CLIENT_ID=
 YOUTUBE_CLIENT_SECRET=
 YOUTUBE_REFRESH_TOKEN=
 YOUTUBE_API_KEY=
+YOUTUBE_REGION_CODE=PK
 ```
 
 Keep secrets in cPanel only; never add them to GitHub or commit them. The three
 YouTube OAuth values enable uploads, and the refresh token must include the
-`youtube.upload` scope. `YOUTUBE_API_KEY` enables related-video discovery for
-description and tag enrichment. Without it, discovery falls back to OAuth and
-keeps the original metadata if the token lacks a read scope.
+`youtube.upload` scope. `YOUTUBE_API_KEY` enables public related-video
+research without requiring an additional OAuth read scope. The uploader first
+analyzes high-performing related videos published in the last 180 days and
+falls back to 365 days when fewer than eight results are available. It retrieves
+public statistics, ranks candidates using views and recent view velocity, then
+creates an original title, long description, hashtags, and tags from recurring
+topic signals. It never copies another video's full title or description.
+`YOUTUBE_REGION_CODE` defaults to `PK` for Urdu and `US` for English.
 
 Save the variables and deploy the application again. If Application Manager does
 not show environment-variable controls, ask the hosting provider to enable the
-Apache `mod_env` module.
+Apache `mod_env` module.ridngly
 
 ### 5. Restart and verify
 
@@ -276,6 +284,17 @@ English system voices installed on their devices. Long scripts are split into
 provider-safe narration chunks and returned as one complete audio file. Add
 `OPENAI_API_KEY` in **Software > Application Manager**, save the change, and
 restart the application by touching `tmp/restart.txt`.
+
+### Cinematic story visuals
+
+Video creation requires `OPENAI_API_KEY` and generates six distinct,
+story-specific 16:9 frames before recording. The renderer uses
+`OPENAI_IMAGE_MODEL=gpt-image-2.5-flare` and `OPENAI_IMAGE_QUALITY=low` by
+default; both settings can be overridden in cPanel. If realistic image
+generation fails, video creation now stops and displays the provider error
+instead of silently publishing the old cartoon fallback. Videos cached by the
+older renderer are ignored and must be created again. Every generated video
+ends with a natural subscribe-and-bell reminder in the narration language.
 
 ## Scheduled production workflow
 
