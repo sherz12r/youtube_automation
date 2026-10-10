@@ -13,7 +13,7 @@ for (const name of ["stories", "story-defaults", "story-client"]) {
   await writeFile(resolve(directory, `${name}.mjs`), outputText.replace(/from "(\.\/[^".]+)"/g, 'from "$1.mjs"'));
 }
 const { initialStories } = await import(pathToFileURL(resolve(directory, "story-defaults.mjs")));
-const { legacyStories } = await import(pathToFileURL(resolve(directory, "stories.mjs")));
+const { legacyStories, storyAge, storyCreatedAt } = await import(pathToFileURL(resolve(directory, "stories.mjs")));
 const { importBrowserStories, storyRequest } = await import(pathToFileURL(resolve(directory, "story-client.mjs")));
 
 test("browser synchronization handles migration, blocked storage and failed saves", async t => {
@@ -37,6 +37,14 @@ test("browser synchronization handles migration, blocked storage and failed save
     assert.equal(statuses[0].titleEn, initialStories[0].titleEn);
     assert.deepEqual(legacyStories("not json", initialStories), []);
     assert.deepEqual(legacyStories('[{"id":null}]', initialStories), []);
+  });
+
+  await t.test("formats creation time for new and legacy stories", () => {
+    const now = Date.UTC(2026, 9, 10, 12);
+    const createdAt = now - 5 * 24 * 60 * 60 * 1000;
+    assert.equal(storyAge({ id: createdAt, createdAt }, "en", now), "5 days ago");
+    assert.equal(storyCreatedAt({ id: createdAt }), createdAt);
+    assert.equal(storyAge({ id: 1 }, "en", now), "Starter story");
   });
 
   await t.test("imports once, retains the backup and disables fetch caching", async () => {
@@ -80,5 +88,7 @@ test("browser synchronization handles migration, blocked storage and failed save
     await assert.rejects(storyRequest({ method: "POST", body: "{}" }), /Save failed/);
     globalThis.fetch = async () => Response.json({ stories: [] });
     await assert.rejects(storyRequest(), /invalid story queue/);
+    globalThis.fetch = async () => new Response("<!DOCTYPE html><title>Forbidden</title>", { status: 403, headers: { "Content-Type": "text/html" } });
+    await assert.rejects(storyRequest({ method: "POST", body: "{}" }), /HTML error page \(HTTP 403\).*cPanel\/Passenger/);
   });
 });

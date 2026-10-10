@@ -10,8 +10,13 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+# tests and generated test output
+/test/
+/tests/
+/coverage/
+/test-results/
+/playwright-report/
+/.nyc_output/
 
 # next.js
 /.next/
@@ -20,7 +25,19 @@
 
 # misc
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.pem
+*.log
+*.tsbuildinfo
+.eslintcache
+/.cache/
+/.turbo/
+/.parcel-cache/
+/.vite/
+/.idea/
+/.vscode/
+/tmp/
 
 # debug
 npm-debug.log*
@@ -29,8 +46,9 @@ yarn-error.log*
 .pnpm-debug.log*
 /logs/
 
-# env files (can opt-in for committing if needed)
+# local environment and secret files
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -42,8 +60,10 @@ yarn-error.log*
 
 # Runtime database (never include in Git or build output)
 /data/
+*.db
+*.db-shm
+*.db-wal
 *.sqlite
+*.sqlite3
 *.sqlite-shm
 *.sqlite-wal
-
-test/*

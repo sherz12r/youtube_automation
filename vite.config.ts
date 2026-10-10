@@ -14,6 +14,10 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  // Vinext loads .env.local into the host process, while the Cloudflare Vite
+  // runtime only forwards declared Worker secrets. Declaring the name keeps
+  // the value out of source/build output and makes it available to API routes.
+  secrets: { required: ["OPENAI_API_KEY"] },
   d1_databases: d1
     ? [
         {

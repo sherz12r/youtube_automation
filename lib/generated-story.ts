@@ -73,5 +73,6 @@ export function generatedStoryRecord(value:unknown,existing:Story[]):Story{
  if(/&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(cleaned.bodyUr+cleaned.bodyEn))throw new Error("The generated story contains an HTML formatting artifact.");
  const candidateKey=storyKey({titleEn:cleaned.titleEn});
  if(existing.some(story=>storyKey(story)===candidateKey))throw new Error("The provider selected a topic already in the queue.");
- return{id:Date.now(),title:cleaned.title,subtitle:cleaned.subtitle,titleEn:cleaned.titleEn,subtitleEn:cleaned.subtitleEn,status:"Needs review",duration:duration(cleaned.bodyEn),sources:draft.sourceCount!,progress:68,color:colors[existing.length%colors.length],bodyUr:cleaned.bodyUr,bodyEn:cleaned.bodyEn,sourceUr:cleaned.sourceUr,sourceEn:cleaned.sourceEn,supportingUr:cleaned.supportingUr,supportingEn:cleaned.supportingEn,sourceSummaryUr:cleaned.sourceSummaryUr,sourceSummaryEn:cleaned.sourceSummaryEn};
+ const createdAt=Date.now();
+ return{id:createdAt,createdAt,title:cleaned.title,subtitle:cleaned.subtitle,titleEn:cleaned.titleEn,subtitleEn:cleaned.subtitleEn,status:"Needs review",duration:duration(cleaned.bodyEn),sources:draft.sourceCount!,progress:68,color:colors[existing.length%colors.length],bodyUr:cleaned.bodyUr,bodyEn:cleaned.bodyEn,sourceUr:cleaned.sourceUr,sourceEn:cleaned.sourceEn,supportingUr:cleaned.supportingUr,supportingEn:cleaned.supportingEn,sourceSummaryUr:cleaned.sourceSummaryUr,sourceSummaryEn:cleaned.sourceSummaryEn};
 }

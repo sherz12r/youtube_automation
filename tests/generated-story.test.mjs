@@ -26,6 +26,7 @@ test("complete generated stories are normalized and stored with their scripts",(
  assert.equal(story.bodyUr.includes("&#x20;"),false);
  assert.equal(story.status,"Needs review");
  assert.equal(story.sources,2);
+ assert.equal(story.createdAt,story.id);
  assert.match(story.duration,/^\d+:\d{2}$/);
 });
 

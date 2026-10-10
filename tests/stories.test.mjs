@@ -78,6 +78,7 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
     const created = (await phone.json()).stories.find(story => story.id === createdId);
     assert.equal(created.titleEn, "New shared story");
     assert.equal(created.status, "Needs review");
+    assert.equal(created.createdAt, created.id);
   });
 
   await t.test("concurrent creations retain both titles and deduplicate retries", async () => {
@@ -118,6 +119,12 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
     assert.equal((await server.request("/api/stories", "PATCH", { id: -1, status: "Approved", progress: 100 })).status, 400);
     assert.equal((await server.request("/api/stories", "PATCH", { id: 42, status: "Approved", progress: 100 })).status, 404);
     assert.deepEqual(await (await server.request()).json(), before);
+  });
+
+  await t.test("status updates use cPanel-compatible POST actions", async () => {
+    const response = await server.request("/api/stories", "POST", { action: "status", id: createdId, status: "Approved", progress: 100 });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).stories.find(story => story.id === createdId).status, "Approved");
   });
 
   await t.test("database persists across production server restarts", async () => {

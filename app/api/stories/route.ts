@@ -6,6 +6,18 @@ export const revalidate = 0;
 const headers = { "Cache-Control": "no-store, no-cache, must-revalidate", "CDN-Cache-Control": "no-store" };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers });
 
+async function statusUpdate(payload: Record<string, unknown>) {
+  const { id, status, progress } = payload;
+  if (!Number.isSafeInteger(id) || Number(id) <= 0 || !validStatuses.includes(status as Story["status"])
+    || typeof progress !== "number" || !Number.isFinite(progress) || progress < 0 || progress > 100) {
+    return json({ error: "Invalid story status." }, 400);
+  }
+  try {
+    const stories = await updateStoryStatus(id as number, status as Story["status"], progress);
+    return stories.some(story => story.id === id) ? json({ stories }) : json({ error: "Story not found." }, 404);
+  } catch (error) { return failure(error); }
+}
+
 function failure(error: unknown) {
   console.error("Story database request failed:", error);
   return json({ error: "Stories could not be saved or loaded. Please retry. If this continues, check the server's story database configuration." }, 503);
@@ -50,6 +62,7 @@ export async function POST(request: Request) {
     try { return json({ stories: await importStories(payload.stories) }); }
     catch (error) { return failure(error); }
   }
+  if (payload.action === "status") return statusUpdate(payload);
   if (!isStoredStory(payload.story)) return json({ error: "Invalid story." }, 400);
   try { return json(await createStory(payload.story), 201); }
   catch (error) { return failure(error); }
@@ -59,13 +72,5 @@ export async function PATCH(request: Request) {
   let payload;
   try { payload = await body(request); }
   catch { return json({ error: "A valid same-site JSON story request is required." }, 400); }
-  const { id, status, progress } = payload;
-  if (!Number.isSafeInteger(id) || Number(id) <= 0 || !validStatuses.includes(status as Story["status"])
-    || typeof progress !== "number" || !Number.isFinite(progress) || progress < 0 || progress > 100) {
-    return json({ error: "Invalid story status." }, 400);
-  }
-  try {
-    const stories = await updateStoryStatus(id as number, status as Story["status"], progress);
-    return stories.some(story => story.id === id) ? json({ stories }) : json({ error: "Story not found." }, 404);
-  } catch (error) { return failure(error); }
+  return statusUpdate(payload);
 }

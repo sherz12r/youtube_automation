@@ -3,6 +3,24 @@ import { NextRequest, NextResponse } from "next/server";
 const SPEECH_CHUNK_LENGTH = 4000;
 type Language = "ur" | "en";
 type WavChunk = { sampleRate:number; channels:number; bitsPerSample:number; audioFormat:number; data:Uint8Array };
+type ProviderError = { error?: { code?: unknown; message?: unknown; type?: unknown } };
+
+function speechProviderError(status: number, detail: string) {
+  let provider: ProviderError = {};
+  try { provider = JSON.parse(detail) as ProviderError; }
+  catch { /* The status-specific message below remains safe and actionable. */ }
+  const code = typeof provider.error?.code === "string" ? provider.error.code : "";
+  const message = typeof provider.error?.message === "string" ? provider.error.message : "";
+  if (status === 401) return "OpenAI rejected OPENAI_API_KEY. Replace the key, then restart the app.";
+  if (status === 403) return "This OpenAI project is not permitted to use text-to-speech. Check the project permissions and model access.";
+  if (status === 429 && (code === "insufficient_quota" || /quota|billing/i.test(message))) {
+    return "OpenAI text-to-speech quota is unavailable. Check the API project billing and usage limits, then retry.";
+  }
+  if (status === 429) return "OpenAI text-to-speech is rate limited. Wait briefly, then retry.";
+  if (status === 400 && message) return `OpenAI could not create the narration: ${message}`;
+  if (status >= 500) return "OpenAI text-to-speech is temporarily unavailable. Please retry shortly.";
+  return `OpenAI text-to-speech failed (HTTP ${status}). Check the API project configuration and server log.`;
+}
 
 function splitTextForSpeech(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -127,14 +145,15 @@ async function createSpeechChunk(apiKey: string, language: Language, input: stri
         : "Speak in clear, natural English at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately.",
       response_format: "wav",
     }),
+    signal: AbortSignal.timeout(120000),
   });
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json(
-      { error: "Speech service is not configured." },
+      { error: "Speech service is not configured. Ensure OPENAI_API_KEY is available to the server runtime, then restart the app." },
       { status: 503 },
     );
   }
@@ -161,12 +180,21 @@ export async function POST(request: NextRequest) {
   const chunks = splitTextForSpeech(text);
   const audioBuffers: ArrayBuffer[] = [];
   for (const [index, chunk] of chunks.entries()) {
-    const response = await createSpeechChunk(apiKey, language, chunk);
+    let response: Response;
+    try {
+      response = await createSpeechChunk(apiKey, language, chunk);
+    } catch (error) {
+      console.error("[speech] OpenAI request could not be completed", `chunk ${index + 1}/${chunks.length}`, error);
+      return NextResponse.json(
+        { error: "The server could not connect to OpenAI text-to-speech. Check outbound HTTPS access and retry." },
+        { status: 502 },
+      );
+    }
     if (!response.ok) {
       const detail = await response.text();
       console.error("[speech] OpenAI request failed", response.status, `chunk ${index + 1}/${chunks.length}`, detail);
       return NextResponse.json(
-        { error: "Speech could not be generated." },
+        { error: speechProviderError(response.status, detail) },
         { status: 502 },
       );
     }

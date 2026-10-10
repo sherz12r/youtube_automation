@@ -108,7 +108,8 @@ export async function importStories(stories: Story[]) {
 
 export async function createStory(story: Story) {
   await initialize();
-  await batch([insertion({ ...story, id: Date.now(), status: "Needs review", progress: 68 }, Date.now())]);
+  const createdAt = Date.now();
+  await batch([insertion({ ...story, id: createdAt, createdAt, status: "Needs review", progress: 68 }, createdAt)]);
   const stories = await listStories();
   return { stories, storyId: stories.find(saved => storyKey(saved) === storyKey(story))!.id };
 }

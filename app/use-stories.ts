@@ -90,6 +90,8 @@ export function useStories() {
       if (mounted.current) setSaving(false);
     }
   }, [loaded]);
-  const updateStatus = (id: number, status: Story["status"], progress = 100) => save("PATCH", { id, status, progress });
+  // Use POST for cPanel compatibility: some shared-hosting security layers
+  // return an HTML error page before PATCH requests reach the application.
+  const updateStatus = (id: number, status: Story["status"], progress = 100) => save("POST", { action: "status", id, status, progress });
   return { stories, loaded, saving, error, refresh, create, generate, updateStatus };
 }
