@@ -7,17 +7,18 @@ const configuredQuality=process.env.OPENAI_IMAGE_QUALITY?.trim().toLowerCase();
 const imageQuality=configuredQuality&&["low","medium","high"].includes(configuredQuality)?configuredQuality:"low";
 
 export async function GET(){
- return NextResponse.json({ready:Boolean(process.env.OPENAI_API_KEY),model:imageModel,quality:imageQuality},{headers:{"Cache-Control":"no-store"}});
+ return NextResponse.json({ready:Boolean(process.env.OPENAI_API_KEY?.trim()),model:imageModel,quality:imageQuality},{headers:{"Cache-Control":"no-store"}});
 }
 
 export async function POST(request:NextRequest){
  try{
-  const apiKey=process.env.OPENAI_API_KEY;
+  const apiKey=process.env.OPENAI_API_KEY?.trim();
   if(!apiKey)return NextResponse.json({error:"Realistic scene generation is not configured. Add OPENAI_API_KEY in cPanel Application Manager, save, and restart the Node.js application."},{status:503});
   const body=await request.json() as {title?:string;scenes?:SceneInput[]};
   const title=String(body.title||"Historical Islamic story").slice(0,180);
-  const scenes=(Array.isArray(body.scenes)?body.scenes:[]).slice(0,6);
+  const scenes=Array.isArray(body.scenes)?body.scenes:[];
   if(!scenes.length)return NextResponse.json({error:"No visual scenes were provided."},{status:400});
+  if(scenes.length!==1)return NextResponse.json({error:"Generate one visual scene per request."},{status:400});
   const images:string[]=[];
   for(const [index,scene] of scenes.entries()){
    const sacredRule=scene.prophetPresent?"A prophet is part of this event. The prophet may appear only as a respectful distant or rear-view robed figure. Fully conceal the face with camera angle, deep shadow, or soft natural light; never show facial features and never use a halo.":"Use historically appropriate ordinary people only; avoid recognizable modern people.";

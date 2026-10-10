@@ -5,11 +5,11 @@ import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-async function startServer(databasePath, startupFile, execArgv = []) {
+async function startServer(databasePath, startupFile, execArgv = [], envOverrides = {}) {
   const child = fork(new URL(startupFile ? "./helpers/passenger-loader.cjs" : "./helpers/story-server.mjs", import.meta.url), startupFile ? [resolve(startupFile)] : [], {
     silent: true,
     execArgv,
-    env: { ...process.env, STORY_DATABASE_PATH: databasePath, OPENAI_API_KEY: "" },
+    env: { ...process.env, STORY_DATABASE_PATH: databasePath, OPENAI_API_KEY: "", ...envOverrides },
   });
   let output = "";
   child.stdout.on("data", data => { output += data; });
@@ -125,6 +125,21 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
     const response = await server.request("/api/stories", "POST", { action: "status", id: createdId, status: "Approved", progress: 100 });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).stories.find(story => story.id === createdId).status, "Approved");
+  });
+
+  await t.test("production routes enforce one proxy-safe speech segment and visual per request", async () => {
+    const configured = await startServer(databasePath, undefined, [], { OPENAI_API_KEY: "qa-placeholder" });
+    try {
+      const visualConfig = await configured.request("/api/visuals");
+      assert.equal(visualConfig.status, 200);
+      assert.equal((await visualConfig.json()).ready, true);
+      const speech = await configured.request("/api/speech", "POST", { language: "ur", text: "x".repeat(1401) });
+      assert.equal(speech.status, 413);
+      assert.match((await speech.json()).error, /1400 characters or fewer/);
+      const visuals = await configured.request("/api/visuals", "POST", { title: "QA", scenes: [{}, {}] });
+      assert.equal(visuals.status, 400);
+      assert.match((await visuals.json()).error, /one visual scene per request/i);
+    } finally { await configured.close(); }
   });
 
   await t.test("database persists across production server restarts", async () => {

@@ -7,7 +7,7 @@ import ts from "typescript";
 
 await mkdir(resolve("work"), { recursive: true });
 const directory = await mkdtemp(resolve("work/story-client-test-"));
-for (const name of ["stories", "story-defaults", "story-client"]) {
+for (const name of ["stories", "story-defaults", "story-client", "speech-audio"]) {
   const source = await readFile(new URL(`../lib/${name}.ts`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
   await writeFile(resolve(directory, `${name}.mjs`), outputText.replace(/from "(\.\/[^".]+)"/g, 'from "$1.mjs"'));
@@ -15,6 +15,27 @@ for (const name of ["stories", "story-defaults", "story-client"]) {
 const { initialStories } = await import(pathToFileURL(resolve(directory, "story-defaults.mjs")));
 const { legacyStories, storyAge, storyCreatedAt } = await import(pathToFileURL(resolve(directory, "stories.mjs")));
 const { importBrowserStories, storyRequest } = await import(pathToFileURL(resolve(directory, "story-client.mjs")));
+const { combineWavBuffers, splitTextForSpeech } = await import(pathToFileURL(resolve(directory, "speech-audio.mjs")));
+
+function wav(samples) {
+  const buffer = new ArrayBuffer(44 + samples.length);
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  for (const [offset, value] of [[0,"RIFF"],[8,"WAVE"],[12,"fmt "],[36,"data"]]) {
+    for (let index = 0; index < value.length; index++) view.setUint8(offset + index, value.charCodeAt(index));
+  }
+  view.setUint32(4, 36 + samples.length, true);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 24000, true);
+  view.setUint32(28, 48000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  view.setUint32(40, samples.length, true);
+  bytes.set(samples, 44);
+  return buffer;
+}
 
 test("browser synchronization handles migration, blocked storage and failed saves", async t => {
   const originalFetch = globalThis.fetch;
@@ -45,6 +66,15 @@ test("browser synchronization handles migration, blocked storage and failed save
     assert.equal(storyAge({ id: createdAt, createdAt }, "en", now), "5 days ago");
     assert.equal(storyCreatedAt({ id: createdAt }), createdAt);
     assert.equal(storyAge({ id: 1 }, "en", now), "Starter story");
+  });
+
+  await t.test("splits narration into proxy-safe requests and combines WAV responses", () => {
+    const chunks = splitTextForSpeech("First sentence. Second sentence has several words. Third sentence.", 24);
+    assert.ok(chunks.length > 1);
+    assert.ok(chunks.every(chunk => chunk.length <= 24));
+    const combined = combineWavBuffers([wav(Uint8Array.from([1,2])), wav(Uint8Array.from([3,4]))]);
+    assert.equal(new DataView(combined).getUint32(40, true), 4);
+    assert.deepEqual([...new Uint8Array(combined, 44)], [1,2,3,4]);
   });
 
   await t.test("imports once, retains the backup and disables fetch caching", async () => {

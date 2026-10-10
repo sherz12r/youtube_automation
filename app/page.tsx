@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { initialStories } from "../lib/story-defaults";
+import { combineWavBuffers, splitTextForSpeech } from "../lib/speech-audio";
 import { storyAge, storyCreatedAt, storyKey, type Story } from "../lib/stories";
 import { normalizeStoryText } from "../lib/story-writing";
 import { useStories } from "./use-stories";
@@ -10,8 +11,10 @@ const latestStoryId=(collection:Story[])=>collection.reduce((latest,story)=>Math
 const initialSelectedStoryId=latestStoryId(initialStories);
 const storyAgeLabel=(story:Story,language:"ur"|"en")=>storyAge(story,language==="ur"?"ur":"en");
 const storyCreatedTitle=(story:Story,language:"ur"|"en")=>{const createdAt=storyCreatedAt(story);return createdAt===null?storyAgeLabel(story,language):new Intl.DateTimeFormat(language==="ur"?"ur-PK":"en",{dateStyle:"medium",timeStyle:"short"}).format(createdAt)};
-async function apiErrorMessage(response:Response,fallback:string){const text=await response.text();try{const payload=JSON.parse(text) as {error?:unknown};if(typeof payload.error==="string"&&payload.error.trim())return payload.error}catch{/* Fall through to the content-type-safe fallback. */}return /^\s*</.test(text)||response.headers.get("content-type")?.includes("text/html")?`The server returned an HTML error page (HTTP ${response.status}). Restart the app and check the server log.`:fallback}
-async function apiJson<T>(response:Response,fallback:string):Promise<T>{const text=await response.text();try{return JSON.parse(text) as T}catch{throw new Error(/^\s*</.test(text)||response.headers.get("content-type")?.includes("text/html")?`The server returned an HTML error page (HTTP ${response.status}). Restart the app and check the server log.`:fallback)}}
+function htmlServiceError(response:Response,stage:string){return `${stage} was interrupted by the hosting server (HTTP ${response.status}). The request may have exceeded the cPanel/Passenger timeout.`}
+async function apiErrorMessage(response:Response,fallback:string,stage="The request"){const text=await response.text();try{const payload=JSON.parse(text) as {error?:unknown};if(typeof payload.error==="string"&&payload.error.trim())return payload.error}catch{/* Fall through to the content-type-safe fallback. */}return /^\s*</.test(text)||response.headers.get("content-type")?.includes("text/html")?htmlServiceError(response,stage):fallback}
+async function apiJson<T>(response:Response,fallback:string,stage="The API request"):Promise<T>{const text=await response.text();try{return JSON.parse(text) as T}catch{throw new Error(/^\s*</.test(text)||response.headers.get("content-type")?.includes("text/html")?htmlServiceError(response,stage):fallback)}}
+async function requestSpeechAudio(language:"ur"|"en",text:string,signal?:AbortSignal,onProgress?:(completed:number,total:number)=>void){const segments=splitTextForSpeech(text),buffers:ArrayBuffer[]=[];for(const [index,segment] of segments.entries()){const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language,text:segment}),signal});if(!response.ok)throw new Error(await apiErrorMessage(response,"Narration could not be generated. Please retry.",`Narration segment ${index+1}/${segments.length}`));buffers.push(await response.arrayBuffer());onProgress?.(index+1,segments.length)}return new Blob([combineWavBuffers(buffers)],{type:"audio/wav"})}
 const blockedMediaPhrases=[/\bNoor\s*Studio\b/gi,/نور\s*اسٹوڈیو/g];
 function cleanMediaText(value:string){return normalizeStoryText(blockedMediaPhrases.reduce((text,pattern)=>text.replace(pattern,""),value))}
 function mediaText(value:string,fallback="Islamic story"){return cleanMediaText(value)||fallback}
@@ -164,9 +167,7 @@ export default function Home(){
   if(targetLanguage==="en"&&window.matchMedia("(max-width: 720px), (pointer: coarse)").matches&&speakOnDevice(targetLanguage,spokenText,playbackId))return;
   const controller=new AbortController();audioRequestRef.current=controller;
   try{
-   const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:targetLanguage,text:spokenText}),signal:controller.signal});
-   if(!response.ok)throw new Error("Speech request failed");
-   const blob=await response.blob();
+   const blob=await requestSpeechAudio(targetLanguage,spokenText,controller.signal);
    if(controller.signal.aborted||playbackIdRef.current!==playbackId)return;
    audioRequestRef.current=null;
    const url=URL.createObjectURL(blob);audioUrlRef.current=url;
@@ -190,12 +191,11 @@ export default function Home(){
    const title=mediaText(targetLanguage==="ur"?selected.title:selected.titleEn);
    const body=mediaText(storyBody(selected,targetLanguage),targetLanguage==="ur"?selected.subtitle:selected.subtitleEn);
    const visualConfigResponse=await fetch("/api/visuals",{cache:"no-store"});
-   const visualConfig=await apiJson<{ready?:boolean;error?:string}>(visualConfigResponse,"The visual service returned an invalid response.");
+   const visualConfig=await apiJson<{ready?:boolean;error?:string}>(visualConfigResponse,"The visual service returned an invalid response.","Visual configuration");
    if(!visualConfigResponse.ok||!visualConfig.ready)throw new Error(visualConfig.error||"Realistic scene generation is not configured. Add OPENAI_API_KEY in cPanel and restart the application.");
    const spokenScript=`${title}. ${body} ${subscriptionCallToAction(targetLanguage)}`;
-   const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:targetLanguage,text:spokenScript})});
-   if(!response.ok)throw new Error(await apiErrorMessage(response,"Narration could not be generated. Please retry."));
-   const audioBlob=await response.blob();setVideoProgress(12);
+   setNotice(targetLanguage==="ur"?"آواز کے مختصر حصے تیار ہو رہے ہیں…":"Creating narration in hosting-safe segments…");
+   const audioBlob=await requestSpeechAudio(targetLanguage,spokenScript,undefined,(completed,total)=>setVideoProgress(3+Math.round(completed/total*9)));setVideoProgress(12);
    const audioBuffer=await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
    const canvas=document.createElement("canvas");canvas.width=1280;canvas.height=720;
    const context=canvas.getContext("2d");if(!context||!(canvas as HTMLCanvasElement&{captureStream?:(fps?:number)=>MediaStream}).captureStream)throw new Error("Video creation is not supported by this browser.");
@@ -211,11 +211,10 @@ export default function Home(){
    setVideoProgress(14);
    const realisticImages:HTMLImageElement[]=[];
    setNotice(targetLanguage==="ur"?"کہانی کے مطابق حقیقی مناظر تیار ہو رہے ہیں…":"Creating cinematic scenes for this story…");
-   const visualResponse=await fetch("/api/visuals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,scenes})});
-   const visualText=await visualResponse.text();let visualResult:{images?:string[];error?:string}={};
-   try{visualResult=JSON.parse(visualText)}catch{throw new Error(visualText||"Realistic visuals could not be generated.")}
-   if(!visualResponse.ok||visualResult.images?.length!==scenes.length)throw new Error(visualResult.error||"Every story scene must have a realistic image. Please retry.");
-   realisticImages.push(...await Promise.all(visualResult.images.map(imageSource=>new Promise<HTMLImageElement>((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error("A realistic scene image could not be loaded."));image.src=imageSource}))));
+   const imageSources=new Array<string>(scenes.length);let nextScene=0,completedScenes=0;
+   const createScenes=async()=>{while(nextScene<scenes.length){const index=nextScene++;const scene={...scenes[index],sequence:index+1,totalScenes:scenes.length};const visualResponse=await fetch("/api/visuals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,scenes:[scene]})});const visualResult=await apiJson<{images?:string[];error?:string}>(visualResponse,"Realistic visuals could not be generated.",`Visual scene ${index+1}/${scenes.length}`);if(!visualResponse.ok||visualResult.images?.length!==1)throw new Error(visualResult.error||`Visual scene ${index+1}/${scenes.length} could not be generated.`);imageSources[index]=visualResult.images[0];completedScenes+=1;setVideoProgress(14+Math.round(completedScenes/scenes.length*20))}};
+   await Promise.all(Array.from({length:Math.min(2,scenes.length)},()=>createScenes()));
+   realisticImages.push(...await Promise.all(imageSources.map(imageSource=>new Promise<HTMLImageElement>((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error("A realistic scene image could not be loaded."));image.src=imageSource}))));
    setVideoProgress(34);setNotice("");
    const wrap=(text:string,maxWidth:number)=>{const words=text.replace(/\s+/g," ").trim().split(" ").filter(Boolean),lines:string[]=[];let line="";for(const word of words){const test=line?`${line} ${word}`:word;if(context.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);return lines};
    const pathRoundRect=(x:number,y:number,w:number,h:number,r:number)=>{const radius=Math.min(r,w/2,h/2);context.beginPath();context.moveTo(x+radius,y);context.arcTo(x+w,y,x+w,y+h,radius);context.arcTo(x+w,y+h,x,y+h,radius);context.arcTo(x,y+h,x,y,radius);context.arcTo(x,y,x+w,y,radius);context.closePath()};
