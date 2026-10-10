@@ -35,7 +35,7 @@ async function createSpeechChunk(apiKey: string, language: Language, input: stri
       instructions: language === "ur"
         ? "Speak in clear, natural Pakistani Urdu at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately."
         : "Speak in clear, natural English at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately.",
-      response_format: "wav",
+      response_format: "pcm",
     }),
     signal: AbortSignal.timeout(120000),
   });
@@ -98,9 +98,10 @@ export async function POST(request: NextRequest) {
   return new Response(audio, {
     status: 200,
     headers: {
-      "Content-Type": "audio/wav",
+      "Content-Type": "audio/pcm",
       "Cache-Control": "private, max-age=3600",
       "X-Speech-Chunks": "1",
+      "X-PCM-Sample-Rate": "24000",
     },
   });
 }

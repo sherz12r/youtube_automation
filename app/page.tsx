@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { initialStories } from "../lib/story-defaults";
-import { combineWavBuffers, splitTextForSpeech } from "../lib/speech-audio";
+import { combinePcmBuffers, splitTextForSpeech } from "../lib/speech-audio";
 import { storyAge, storyCreatedAt, storyKey, type Story } from "../lib/stories";
 import { normalizeStoryText } from "../lib/story-writing";
 import { useStories } from "./use-stories";
@@ -14,7 +14,7 @@ const storyCreatedTitle=(story:Story,language:"ur"|"en")=>{const createdAt=story
 function htmlServiceError(response:Response,stage:string){return `${stage} was interrupted by the hosting server (HTTP ${response.status}). The request may have exceeded the cPanel/Passenger timeout.`}
 async function apiErrorMessage(response:Response,fallback:string,stage="The request"){const text=await response.text();try{const payload=JSON.parse(text) as {error?:unknown};if(typeof payload.error==="string"&&payload.error.trim())return payload.error}catch{/* Fall through to the content-type-safe fallback. */}return /^\s*</.test(text)||response.headers.get("content-type")?.includes("text/html")?htmlServiceError(response,stage):fallback}
 async function apiJson<T>(response:Response,fallback:string,stage="The API request"):Promise<T>{const text=await response.text();try{return JSON.parse(text) as T}catch{throw new Error(/^\s*</.test(text)||response.headers.get("content-type")?.includes("text/html")?htmlServiceError(response,stage):fallback)}}
-async function requestSpeechAudio(language:"ur"|"en",text:string,signal?:AbortSignal,onProgress?:(completed:number,total:number)=>void){const segments=splitTextForSpeech(text),buffers:ArrayBuffer[]=[];for(const [index,segment] of segments.entries()){const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language,text:segment}),signal});if(!response.ok)throw new Error(await apiErrorMessage(response,"Narration could not be generated. Please retry.",`Narration segment ${index+1}/${segments.length}`));buffers.push(await response.arrayBuffer());onProgress?.(index+1,segments.length)}return new Blob([combineWavBuffers(buffers)],{type:"audio/wav"})}
+async function requestSpeechAudio(language:"ur"|"en",text:string,signal?:AbortSignal,onProgress?:(completed:number,total:number)=>void){const segments=splitTextForSpeech(text),buffers:ArrayBuffer[]=[];for(const [index,segment] of segments.entries()){const response=await fetch("/api/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language,text:segment}),signal});if(!response.ok)throw new Error(await apiErrorMessage(response,"Narration could not be generated. Please retry.",`Narration segment ${index+1}/${segments.length}`));if(!response.headers.get("content-type")?.includes("audio/pcm"))throw new Error(`Narration segment ${index+1}/${segments.length} returned an invalid audio type.`);buffers.push(await response.arrayBuffer());onProgress?.(index+1,segments.length)}return new Blob([combinePcmBuffers(buffers)],{type:"audio/wav"})}
 const blockedMediaPhrases=[/\bNoor\s*Studio\b/gi,/نور\s*اسٹوڈیو/g];
 function cleanMediaText(value:string){return normalizeStoryText(blockedMediaPhrases.reduce((text,pattern)=>text.replace(pattern,""),value))}
 function mediaText(value:string,fallback="Islamic story"){return cleanMediaText(value)||fallback}
