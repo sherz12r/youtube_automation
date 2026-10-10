@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 
 async function startServer(databasePath, startupFile, execArgv = [], envOverrides = {}) {
   const child = fork(new URL(startupFile ? "./helpers/passenger-loader.cjs" : "./helpers/story-server.mjs", import.meta.url), startupFile ? [resolve(startupFile)] : [], {
     silent: true,
     execArgv,
-    env: { ...process.env, STORY_DATABASE_PATH: databasePath, OPENAI_API_KEY: "", ...envOverrides },
+    env: { ...process.env, STORY_DATABASE_PATH: databasePath, VIDEO_STORAGE_PATH: join(dirname(databasePath), "videos"), OPENAI_API_KEY: "", ...envOverrides },
   });
   let output = "";
   child.stdout.on("data", data => { output += data; });
@@ -29,6 +29,9 @@ async function startServer(databasePath, startupFile, execArgv = [], envOverride
           headers: { "Content-Type": "application/json", ...headers },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         });
+      },
+      async requestRaw(path, method = "GET", body, headers = {}) {
+        return fetch(`http://127.0.0.1:${port}${path}`, { method, headers, ...(body === undefined ? {} : { body }) });
       },
       async close() { if (child.exitCode !== null) return; const exited = once(child, "exit"); child.kill(); await exited; },
     };
@@ -127,6 +130,30 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
     assert.equal((await response.json()).stories.find(story => story.id === createdId).status, "Approved");
   });
 
+  await t.test("generated video is available to an independent device", async () => {
+    const first = Uint8Array.from([1, 2, 3, 4]);
+    const second = Uint8Array.from([5, 6, 7]);
+    const headers = { "Content-Type": "video/webm", "X-Video-Language": "ur", "X-Renderer-Version": "3" };
+    const firstResponse = await server.requestRaw("/api/videos?storyId=1", "PUT", first, { ...headers, "Content-Range": "bytes 0-3/7" });
+    assert.equal(firstResponse.status, 202);
+    assert.equal((await firstResponse.json()).complete, false);
+    const finalResponse = await server.requestRaw("/api/videos?storyId=1", "PUT", second, { ...headers, "Content-Range": "bytes 4-6/7" });
+    assert.equal(finalResponse.status, 201);
+    assert.equal((await finalResponse.json()).complete, true);
+
+    const phone = await server.requestRaw("/api/videos?storyId=1", "GET", undefined, { "User-Agent": "Mozilla/5.0 (iPhone)" });
+    assert.equal(phone.status, 200);
+    assert.equal(phone.headers.get("content-type"), "video/webm");
+    assert.equal(phone.headers.get("x-video-language"), "ur");
+    assert.equal(phone.headers.get("x-renderer-version"), "3");
+    assert.deepEqual([...new Uint8Array(await phone.arrayBuffer())], [1, 2, 3, 4, 5, 6, 7]);
+
+    const metadata = await server.request("/api/videos?storyId=1", "POST", { youtubeUrl: "https://youtu.be/qa-video" });
+    assert.equal(metadata.status, 200);
+    const shared = await server.requestRaw("/api/videos?storyId=1");
+    assert.equal(shared.headers.get("x-youtube-url"), "https://youtu.be/qa-video");
+  });
+
   await t.test("production routes enforce one proxy-safe speech segment and visual per request", async () => {
     const configured = await startServer(databasePath, undefined, [], { OPENAI_API_KEY: "qa-placeholder" });
     try {
@@ -148,6 +175,9 @@ test("shared stories survive fresh-device reads, concurrent saves, imports and s
     server = await startServer(databasePath);
     assert.deepEqual(await (await server.request()).json(), before);
     assert.equal((await readFile(databasePath)).subarray(0, 15).toString(), "SQLite format 3");
+    const video = await server.requestRaw("/api/videos?storyId=1");
+    assert.equal(video.status, 200);
+    assert.deepEqual([...new Uint8Array(await video.arrayBuffer())], [1, 2, 3, 4, 5, 6, 7]);
   });
 
   await t.test("storage failures return an explicit non-cacheable error", async () => {

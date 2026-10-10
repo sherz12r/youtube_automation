@@ -4,6 +4,8 @@ const { dirname, join } = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 process.env.STORY_DATABASE_PATH ??= join(__dirname, "data", "stories.sqlite");
+process.env.VIDEO_STORAGE_PATH ??= join(__dirname, "data", "videos");
+process.env.YOUTUBE_UPLOAD_SESSION_PATH ??= join(__dirname, "data", "youtube-uploads");
 
 const logDirectory = join(__dirname, "logs");
 const startupLog = join(logDirectory, "startup.log");

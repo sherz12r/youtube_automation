@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SPEECH_SEGMENT_LENGTH } from "../../../lib/speech-audio";
+import { SPEECH_SEGMENT_LENGTH, SPEECH_VOICE, speechInstructions } from "../../../lib/speech-audio";
 
 type Language = "ur" | "en";
 type ProviderError = { error?: { code?: unknown; message?: unknown; type?: unknown } };
@@ -30,11 +30,9 @@ async function createSpeechChunk(apiKey: string, language: Language, input: stri
     },
     body: JSON.stringify({
       model: "gpt-4o-mini-tts",
-      voice: language === "ur" ? "marin" : "cedar",
+      voice: SPEECH_VOICE,
       input,
-      instructions: language === "ur"
-        ? "Speak in clear, natural Pakistani Urdu at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately."
-        : "Speak in clear, natural English at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately.",
+      instructions: speechInstructions(language),
       response_format: "pcm",
     }),
     signal: AbortSignal.timeout(120000),
@@ -101,6 +99,7 @@ export async function POST(request: NextRequest) {
       "Content-Type": "audio/pcm",
       "Cache-Control": "private, max-age=3600",
       "X-Speech-Chunks": "1",
+      "X-Speech-Voice": SPEECH_VOICE,
       "X-PCM-Sample-Rate": "24000",
     },
   });

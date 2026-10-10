@@ -1,4 +1,11 @@
 export const SPEECH_SEGMENT_LENGTH = 1400;
+export const SPEECH_VOICE = "onyx";
+
+export function speechInstructions(language: "ur" | "en") {
+  return language === "ur"
+    ? "Use a deep, natural adult male voice. Speak in clear Pakistani Urdu at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately. Do not use a feminine voice."
+    : "Use a deep, natural adult male voice. Speak in clear English at a calm storytelling pace. Pronounce Arabic and Islamic names respectfully and accurately. Do not use a feminine voice.";
+}
 
 export function splitTextForSpeech(text: string, maxLength = SPEECH_SEGMENT_LENGTH) {
   const normalized = text.replace(/\s+/g, " ").trim();

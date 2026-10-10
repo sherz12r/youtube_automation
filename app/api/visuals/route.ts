@@ -29,6 +29,7 @@ export async function POST(request:NextRequest){
     "Create one cinematic photorealistic live-action historical documentary frame for a narrated Islamic story. It must look like a frame from a serious period film, never an illustration, animation, 2D art, cartoon, CGI render, poster, collage, or thumbnail.",
     "Use realistic people and anatomy, weathered fabric, stone, dust, practical period props, atmospheric depth, realistic camera optics, subtle film grain, believable lighting, and restrained cinematic color grading.",
     "Compose for 16:9 widescreen with the important action center-safe. No text, captions, subtitles, borders, logos, watermarks, UI, or modern objects.",
+    "Show the specific action in this story moment, not a static portrait. Make this sequence frame visibly distinct through its setting, action, staging, lighting, and camera composition.",
     "Respectful Islamic treatment: no divine beings, angels, icons, religious caricatures, presenter, or talking head. Keep this frame specific to this narrative moment.",
     sacredRule,
     `Selected story: ${title}. Sequence frame ${sequence} of ${totalScenes}: ${label}. Scene-specific visual brief: ${visualHint}. Narrative event: ${caption}`,

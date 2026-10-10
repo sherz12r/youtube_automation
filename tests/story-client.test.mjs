@@ -7,7 +7,7 @@ import ts from "typescript";
 
 await mkdir(resolve("work"), { recursive: true });
 const directory = await mkdtemp(resolve("work/story-client-test-"));
-for (const name of ["stories", "story-defaults", "story-client", "speech-audio"]) {
+for (const name of ["stories", "story-defaults", "story-client", "speech-audio", "video-timeline"]) {
   const source = await readFile(new URL(`../lib/${name}.ts`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
   await writeFile(resolve(directory, `${name}.mjs`), outputText.replace(/from "(\.\/[^".]+)"/g, 'from "$1.mjs"'));
@@ -15,7 +15,8 @@ for (const name of ["stories", "story-defaults", "story-client", "speech-audio"]
 const { initialStories } = await import(pathToFileURL(resolve(directory, "story-defaults.mjs")));
 const { legacyStories, storyAge, storyCreatedAt } = await import(pathToFileURL(resolve(directory, "stories.mjs")));
 const { importBrowserStories, storyRequest } = await import(pathToFileURL(resolve(directory, "story-client.mjs")));
-const { combinePcmBuffers, splitTextForSpeech } = await import(pathToFileURL(resolve(directory, "speech-audio.mjs")));
+const { combinePcmBuffers, SPEECH_VOICE, speechInstructions, splitTextForSpeech } = await import(pathToFileURL(resolve(directory, "speech-audio.mjs")));
+const { MAX_VIDEO_SCENES, groupStoryMoments, scenePositionAtRatio } = await import(pathToFileURL(resolve(directory, "video-timeline.mjs")));
 
 test("browser synchronization handles migration, blocked storage and failed saves", async t => {
   const originalFetch = globalThis.fetch;
@@ -57,6 +58,23 @@ test("browser synchronization handles migration, blocked storage and failed save
     assert.deepEqual([...new Uint8Array(combined, 44)], [1,2,3,4]);
     assert.equal(new DataView(combined).getUint32(24, true), 24000);
     assert.throws(() => combinePcmBuffers([Uint8Array.from([1]).buffer]), /invalid PCM audio/);
+  });
+
+  await t.test("uses male narration instructions and advances through every video scene", () => {
+    assert.equal(SPEECH_VOICE, "onyx");
+    assert.match(speechInstructions("ur"), /adult male voice/i);
+    assert.match(speechInstructions("en"), /adult male voice/i);
+    assert.equal(MAX_VIDEO_SCENES, 10);
+    const longUnpunctuatedStory = Array.from({ length: 280 }, (_, index) => `word${index}`).join(" ");
+    const moments = groupStoryMoments([longUnpunctuatedStory]);
+    assert.equal(moments.length, 10);
+    assert.equal(moments.flatMap(moment => moment.split(" ")).length, 280);
+    const indices = Array.from({ length: MAX_VIDEO_SCENES }, (_, index) =>
+      scenePositionAtRatio(MAX_VIDEO_SCENES, (index + 0.5) / MAX_VIDEO_SCENES).index,
+    );
+    assert.deepEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.equal(scenePositionAtRatio(3, 1).index, 2);
+    assert.throws(() => scenePositionAtRatio(0, 0), /at least one scene/);
   });
 
   await t.test("imports once, retains the backup and disables fetch caching", async () => {
