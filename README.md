@@ -1,69 +1,44 @@
-# Noor Studio — YouTube Story Automation
+# Noor Studio — Multi-tenant YouTube Automation
 
-Noor Studio is a review-first dashboard for producing Islamic story videos. It is designed around this workflow:
+Noor Studio is a subscription-based SaaS workspace for producing YouTube videos. A main administrator creates customer accounts and controls access, while every customer receives an isolated channel workspace, story queue, generated-video library, channel profile, and encrypted YouTube authorization.
+
+The default profile supports sourced Islamic stories, but each customer can configure their own channel topic, audience, language, tone, publishing schedule, and upload privacy.
 
 `Scheduled topic research → source verification → story script → human approval → voice → video → YouTube`
 
-The religious verification and publishing steps intentionally require human approval. Approved stories can be narrated with OpenAI, rendered as downloadable browser-generated WebM videos, previewed, and optionally uploaded privately through the YouTube Data API. Provider-backed research and persistent server scheduling still need API integrations.
+Religious verification and publishing intentionally require human approval. Approved stories can be narrated with OpenAI, rendered as downloadable browser-generated WebM videos, previewed, and optionally uploaded privately through the YouTube Data API.
 
 ## Included
 
-Story creation uses the OpenAI Responses API to select a new topic automatically,
-exclude topics already in the shared queue, and produce complete equivalent Urdu
-and English narratives with source notes. Generated scripts are saved in SQLite
-with the story record and are reused for reading, sharing, narration, and video.
-The bundled bilingual library remains available for starter stories. Every new
-provider-backed draft applies `prompts/islamic-youtube-story-writer.md` and remains
-in **Needs review** status until a person verifies and approves it.
-
-- Story research and review queue
-- Qur'an, translation, and religious-claim verification indicators
-- Full-story playback using the browser's speech engine
-- Daily, weekly, or custom-day scheduling controls
-- Timezone and automation pause controls
-- Mandatory approval before video production
-- In-browser narrated video creation, preview, and WebM download
+- Public product landing page and secure email/password login
+- Main-admin customer and subscription management
+- Opaque, HttpOnly database-backed sessions
+- Seven-character minimum password policy (200-character maximum)
+- Per-customer channel topics, audience, language, tone, schedule, and upload privacy
+- Encrypted per-customer YouTube refresh tokens
+- Server-enforced tenant isolation for stories, videos, settings, and upload sessions
+- Shared server-only OpenAI key and provider configuration
+- Story research, bilingual script generation, and a human-review queue
+- Optional 30–60 second, source-checked Prophet stories for YouTube Shorts
+- Quran, translation, and religious-claim verification indicators
+- Server-generated Urdu and English narration
+- In-browser narrated-video creation, preview, and WebM download
 - Optional private YouTube upload after video review
-- Responsive desktop and mobile dashboard
+- Responsive desktop and mobile dashboards
 
-Schedule preferences currently use browser storage. They remain on the same browser/device, but do not run when the application is offline. An always-on scheduler must be connected to a hosted worker, cron task, n8n, or Make workflow.
+## Accounts, isolation, and storage
 
-## Story database and device synchronization
+Accounts, sessions, subscriptions, channel profiles, and story statuses live in one server database. Every customer-owned query is scoped by the authenticated owner's ID. API authorization, database queries, video metadata, file paths, and YouTube upload sessions all enforce that boundary; changing a record ID does not allow one customer to access another customer's data.
 
-Stories and their review/published statuses now live in a shared server database.
-The cPanel Node application uses **SQLite**, through Node's built-in `node:sqlite`
-module; no MySQL server, database password, or additional database package is
-needed. The file defaults to `data/stories.sqlite` in the application directory.
-`app.cjs` (also loaded by `app.js`) anchors this path to the project root. When using `npm start` or the
-standalone server directly, the default is relative to the working directory;
-set `STORY_DATABASE_PATH` to an absolute path to keep it stable across deployments.
-The directory must be writable by the Node application and outside the public
-web directory. Keep it outside `dist/`, which is replaced on each build, and
-include it in server backups. Runtime database files are excluded from Git.
+YouTube refresh tokens are encrypted at rest with `YOUTUBE_TOKEN_ENCRYPTION_KEY`. The OpenAI key and Google OAuth client credentials remain server-only and shared by the platform. Each customer stores only their own YouTube refresh token.
 
-Previously, there was **no active story database**: the Drizzle schema was empty,
-the Cloudflare D1 binding was disabled, and stories were written only to the
-creating browser's `localStorage` (`noor-stories`). A phone therefore loaded its
-own separate queue, regardless of how often it refreshed.
+The cPanel Node application uses SQLite through Node's built-in `node:sqlite` module, so no separate MySQL server is required. The database defaults to `data/stories.sqlite`. Generated videos default to `data/videos`. Keep the entire `data/` directory outside `dist/`, writable by the Node application, and included in server backups.
 
-The page now loads `/api/stories` without caching, refreshes when a mobile tab
-becomes visible or returns from browser history, and checks for updates every
-30 seconds while visible. Creation and status changes are confirmed only after
-the server saves them. Failed requests show a retry message.
+The Cloudflare/Sites build uses the configured `DB` D1 binding instead of a local SQLite file. Database migrations are in `drizzle/`.
 
-After deploying this update, open the site once in **each original browser and
-on the same domain where you created stories**. Existing browser stories are
-automatically imported, retaining the old local copy as a backup. Imports add
-missing stories without replacing the shared queue or rolling back statuses
-already saved on the server. Then refresh the phone. Do not clear the original
-browser's site data before importing it; the server cannot retrieve browser-only
-stories from another device.
+Story data is loaded from the server without caching and refreshed when a browser tab becomes visible, returns from browser history, and periodically while visible. Legacy stories previously held only in browser storage are imported without replacing the customer's server queue or rolling back newer statuses.
 
-This is one shared studio per deployment, consistent with the existing app; it
-does not create separate queues for separate user accounts. Video files remain
-in the creating browser's IndexedDB, and schedule preferences remain device-local.
-The existing Cloudflare/Sites build uses its `DB` D1 binding (SQLite-compatible)
-instead of a local SQLite file; its migrations are in `drizzle/`.
+Schedule preferences remain device-local and do not execute while the application is offline. Use a hosted worker, cPanel cron task, n8n, Make, or another scheduler for unattended production.
 
 ## Requirements
 
@@ -77,123 +52,51 @@ instead of a local SQLite file; its migrations are in `drizzle/`.
 git clone https://github.com/sherz12r/youtube_automation.git
 cd youtube_automation
 npm install
+```
+
+Copy `.env.example` to `.env.local`, provide at least the administrator and encryption values, then start development:
+
+```bash
 npm run dev
 ```
 
-Open the local address shown in the terminal, normally `http://localhost:3000`.
+The local address is normally `http://localhost:3000`.
 
-Create and test a production build:
+Create and run a production build:
 
 ```bash
 npm run build
 npm start
 ```
 
-To use another port:
-
-### macOS or Linux
+To use another port on macOS or Linux:
 
 ```bash
 PORT=8080 npm start
 ```
 
-### Windows PowerShell
+On Windows PowerShell:
 
 ```powershell
 $env:PORT=8080
 npm start
 ```
 
-## Deploy on cPanel with Application Manager
+## Environment variables
 
-Your hosting account must provide **Software > Application Manager**, Passenger,
-and Node.js **22.13 or newer**. Ask the hosting provider to install or select
-Node.js 22 if Application Manager is using an older runtime. PHP-only hosting
-cannot run this project.
-
-These instructions use a dedicated domain or subdomain with `/` as the base URL.
-The application files and SQLite database stay outside `public_html`; Passenger
-connects the selected domain to the Node.js application.
-
-### 1. Upload the project
-
-Use **Files > Git Version Control** to clone:
+The minimum platform configuration is:
 
 ```text
-https://github.com/sherz12r/youtube_automation.git
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=use-a-unique-password-of-at-least-7-characters
+ADMIN_NAME=Main administrator
+YOUTUBE_TOKEN_ENCRYPTION_KEY=use-a-long-random-secret-and-keep-it-stable
+STORY_DATABASE_PATH=./data/stories.sqlite
+VIDEO_STORAGE_PATH=./data/videos
+YOUTUBE_UPLOAD_SESSION_PATH=./data/youtube-uploads
 ```
 
-Select the `master` branch. Alternatively, upload and extract a ZIP outside
-`public_html`, for example into:
-
-```text
-/home/CPANEL_USER/youtube_automation
-```
-
-Replace `CPANEL_USER` in every command and path below with the actual cPanel
-account username.
-
-### 2. Install dependencies and build
-
-Open **Advanced > Terminal** (or connect with SSH) and run:
-
-```bash
-cd /home/CPANEL_USER/youtube_automation
-npm install
-npm run build
-mkdir -p data tmp
-test -f dist/standalone/server.js
-```
-
-If `node --version` is not Node 22, use the host's cPanel Node.js binary. A
-typical cPanel path is `/opt/cpanel/ea-nodejs22/bin`:
-
-```bash
-export PATH=/opt/cpanel/ea-nodejs22/bin:$PATH
-node --version
-npm install
-npm run build
-```
-
-Do not use `npm install --omit=dev` before building because the build tools are
-development dependencies. The final `test` command should return silently; an
-error means the production build was not created.
-
-### 3. Register the application
-
-Open **Software > Application Manager**, click **Register Application**, and use:
-
-- **Application Name:** `noor-studio`
-- **Deployment Domain:** the domain or subdomain that will serve the app
-- **Base Application URL:** `/`
-- **Application Path:** `youtube_automation` (relative to the cPanel home directory)
-- **Deployment Environment:** `Production`
-
-Add the environment variables from the next section, then click **Deploy**.
-Application Manager uses the newest Node.js runtime configured by the hosting
-provider; it does not provide the same per-application version selector found in
-some cPanel Node.js interfaces.
-
-Passenger looks for `app.js` by default. This repository already includes
-`app.js`, which loads the Passenger-compatible `app.cjs` wrapper and then the
-built server. Do not enter `npm start`, set a startup file, or rename either
-wrapper when using Application Manager. Passenger supplies the listening port,
-so do not add a `PORT` environment variable.
-
-After registration, Application Manager may show **Enable Dependencies**. It can
-install the npm packages, but `npm run build` must still be run from Terminal as
-shown above.
-
-### 4. Add environment variables
-
-In Application Manager, edit `noor-studio` and select **Add Variable** for each
-value. At minimum, set an absolute database path:
-
-```text
-STORY_DATABASE_PATH=/home/CPANEL_USER/youtube_automation/data/stories.sqlite
-```
-
-Add provider secrets only for the features being used:
+Provider configuration:
 
 ```text
 OPENAI_API_KEY=
@@ -203,30 +106,93 @@ OPENAI_IMAGE_QUALITY=low
 ELEVENLABS_API_KEY=
 YOUTUBE_CLIENT_ID=
 YOUTUBE_CLIENT_SECRET=
+YOUTUBE_OAUTH_REDIRECT_URI=https://your-domain.example/api/youtube/oauth/callback
+# Optional compatibility token for the main administrator only. Customer tokens belong in Channel settings.
 YOUTUBE_REFRESH_TOKEN=
 YOUTUBE_API_KEY=
-YOUTUBE_REGION_CODE=PK
+YOUTUBE_REGION_CODE=US
 ```
 
-Keep secrets in cPanel only; never add them to GitHub or commit them. The three
-YouTube OAuth values enable uploads, and the refresh token must include the
-`youtube.upload` scope. `YOUTUBE_API_KEY` enables public related-video
-research without requiring an additional OAuth read scope. The uploader first
-analyzes high-performing related videos published in the last 180 days and
-falls back to 365 days when fewer than eight results are available. It retrieves
-public statistics, ranks candidates using views and recent view velocity, then
-creates an original title, long description, hashtags, and tags from recurring
-topic signals. It never copies another video's full title or description.
-`YOUTUBE_REGION_CODE` defaults to `PK` for Urdu and `US` for English.
+Keep all secrets in server environment variables; never expose or commit them. `ADMIN_EMAIL` and `ADMIN_PASSWORD` seed the first main administrator. Do not change `YOUTUBE_TOKEN_ENCRYPTION_KEY` after customers connect YouTube, because existing tokens could no longer be decrypted.
 
-Save the variables and deploy the application again. If Application Manager does
-not show environment-variable controls, ask the hosting provider to enable the
-Apache `mod_env` module.ridngly
+The shared YouTube client ID and secret enable OAuth. Add `https://your-domain.example/api/youtube/oauth/callback` to the Google OAuth client's authorized redirect URIs and set the same URL in `YOUTUBE_OAUTH_REDIRECT_URI`. Each customer then uses **Connect YouTube** in Channel settings; the resulting refresh token is encrypted and belongs only to that account. An optional `YOUTUBE_REFRESH_TOKEN` is accepted only for the main administrator, which keeps older single-account installations working without exposing that token to customer accounts. `YOUTUBE_API_KEY` enables public related-video research without an additional OAuth read scope. `YOUTUBE_REGION_CODE` defaults to `PK` for Urdu and `US` for English.
+
+## Deploy on cPanel with Application Manager
+
+The hosting account must provide **Software > Application Manager**, Passenger, and Node.js 22.13 or newer. PHP-only hosting cannot run this project.
+
+These instructions assume a dedicated domain or subdomain with `/` as the base URL. Keep the application and SQLite database outside `public_html`; Passenger connects the selected domain to the Node application.
+
+### 1. Upload the project
+
+Use **Files > Git Version Control** to clone:
+
+```text
+https://github.com/sherz12r/youtube_automation.git
+```
+
+Select the `master` branch. Alternatively, upload and extract the project outside `public_html`, for example:
+
+```text
+/home/CPANEL_USER/youtube_automation
+```
+
+Replace `CPANEL_USER` below with the real cPanel username.
+
+### 2. Install and build
+
+Open **Advanced > Terminal** or connect through SSH:
+
+```bash
+cd /home/CPANEL_USER/youtube_automation
+npm install
+npm run build
+mkdir -p data tmp
+test -f dist/standalone/server.js
+```
+
+If the default runtime is older, use the host's Node 22 binary. A common cPanel path is:
+
+```bash
+export PATH=/opt/cpanel/ea-nodejs22/bin:$PATH
+node --version
+npm install
+npm run build
+```
+
+Do not use `npm install --omit=dev` before building because build tools are development dependencies.
+
+### 3. Register the application
+
+In **Software > Application Manager**, select **Register Application** and use:
+
+- **Application Name:** `noor-studio`
+- **Deployment Domain:** the domain or subdomain serving the app
+- **Base Application URL:** `/`
+- **Application Path:** `youtube_automation`
+- **Deployment Environment:** `Production`
+
+Passenger looks for `app.js` by default. This repository's `app.js` loads the Passenger-compatible `app.cjs` wrapper and the built server. Do not rename these files or add a separate `PORT` environment variable; Passenger supplies the listening port.
+
+### 4. Configure production variables
+
+In Application Manager, add at least:
+
+```text
+STORY_DATABASE_PATH=/home/CPANEL_USER/youtube_automation/data/stories.sqlite
+VIDEO_STORAGE_PATH=/home/CPANEL_USER/youtube_automation/data/videos
+YOUTUBE_UPLOAD_SESSION_PATH=/home/CPANEL_USER/youtube_automation/data/youtube-uploads
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=use-a-unique-password-of-at-least-7-characters
+ADMIN_NAME=Main administrator
+YOUTUBE_TOKEN_ENCRYPTION_KEY=use-a-long-random-secret-and-keep-it-stable
+```
+
+Add provider variables only for the features you use. Save the variables and deploy again. If Application Manager does not expose environment-variable controls, ask the host to enable Apache `mod_env`.
 
 ### 5. Restart and verify
 
-Passenger restarts an Application Manager app when this file is created or its
-timestamp changes:
+Passenger restarts the app when `tmp/restart.txt` changes:
 
 ```bash
 cd /home/CPANEL_USER/youtube_automation
@@ -234,15 +200,7 @@ mkdir -p tmp
 touch tmp/restart.txt
 ```
 
-Open the deployment domain over HTTPS and create a test story. The first story
-request creates the SQLite table automatically. Confirm that
-`data/stories.sqlite` exists and keep the entire `data/` directory in server
-backups. Do not put the database in `dist/`, because that directory is replaced
-by each build.
-
-After deploying the shared-database update, open the site once in each original
-browser on the original domain before clearing browser data. This imports any
-stories that were previously stored only in that browser.
+Open the site over HTTPS and sign in with the administrator account. Create a customer from **Customers**, sign in as that customer, save the channel profile, and create a test story. Confirm that `data/stories.sqlite` exists and back up the entire `data/` directory.
 
 ### 6. Update the deployment
 
@@ -255,78 +213,49 @@ mkdir -p tmp
 touch tmp/restart.txt
 ```
 
-Keep `data/` in place during every update. If dependencies did not change,
-`npm install` can be skipped.
+Keep `data/` in place during updates. If dependencies did not change, `npm install` can be skipped.
 
 ### Troubleshooting
 
-- Check `/home/CPANEL_USER/youtube_automation/logs/` for Passenger errors.
+- Check `/home/CPANEL_USER/youtube_automation/logs/` and `logs/startup.log` for Passenger errors.
 - A missing `dist/standalone/server.js` means `npm run build` did not complete.
-- `ERR_REQUIRE_ASYNC_MODULE` or `ERR_REQUIRE_ESM` usually means the server has old
-  wrappers or is running an unsupported Node.js version. Pull the latest code,
-  confirm `node --version` is at least `22.13`, rebuild, and touch
-  `tmp/restart.txt`.
-- A database-open error usually means `STORY_DATABASE_PATH` is incorrect or the
-  application user cannot write to `data/`.
-- If **Software > Application Manager** is missing, the hosting provider must
-  enable Application Manager and Passenger for the account.
+- `ERR_REQUIRE_ASYNC_MODULE` or `ERR_REQUIRE_ESM` usually means the server has old wrappers or an unsupported Node version. Pull the latest code, verify Node 22.13+, rebuild, and touch `tmp/restart.txt`.
+- A database-open error usually means `STORY_DATABASE_PATH` is incorrect or the application user cannot write to `data/`.
+- If **Software > Application Manager** is missing, the host must enable Application Manager and Passenger.
 
-See cPanel's official
-[Application Manager documentation](https://docs.cpanel.net/cpanel/software/application-manager/)
-and [Node.js installation guide](https://docs.cpanel.net/knowledge-base/web-services/how-to-install-a-node.js-application/)
-for host-level requirements and Passenger details.
+See cPanel's [Application Manager documentation](https://docs.cpanel.net/cpanel/software/application-manager/) and [Node.js installation guide](https://docs.cpanel.net/knowledge-base/web-services/how-to-install-a-node.js-application/) for host-level requirements.
 
-### Urdu and English speech
+## Media generation
 
-The Listen buttons generate audio on the server, so visitors do not need Urdu or
-English system voices installed on their devices. Long scripts are split into
-provider-safe narration chunks and returned as one complete audio file. Add
-`OPENAI_API_KEY` in **Software > Application Manager**, save the change, and
-restart the application by touching `tmp/restart.txt`.
+The Listen controls generate audio on the server, so visitors do not need Urdu or English system voices installed. Long scripts are split into provider-safe narration chunks and returned as one complete audio file.
 
-### Cinematic story visuals
-
-Video creation requires `OPENAI_API_KEY` and generates six distinct,
-story-specific 16:9 frames before recording. The renderer uses
-`OPENAI_IMAGE_MODEL=gpt-image-2.5-flare` and `OPENAI_IMAGE_QUALITY=low` by
-default; both settings can be overridden in cPanel. If realistic image
-generation fails, video creation now stops and displays the provider error
-instead of silently publishing the old cartoon fallback. Videos cached by the
-older renderer are ignored and must be created again. Every generated video
-ends with a natural subscribe-and-bell reminder in the narration language.
+Video creation requires `OPENAI_API_KEY` and generates six story-specific 16:9 frames before recording. The renderer uses `OPENAI_IMAGE_MODEL=gpt-image-2.5-flare` and `OPENAI_IMAGE_QUALITY=low` by default. If image generation fails, video creation stops and displays the provider error instead of silently publishing a fallback.
 
 ## Scheduled production workflow
 
-All provider-backed story writing must follow
-[`prompts/islamic-youtube-story-writer.md`](prompts/islamic-youtube-story-writer.md).
-That specification is the canonical prompt for accuracy, sourcing, Islamic adab,
-Urdu narration, titles, thumbnails, descriptions, and output structure. The
-automatic generator loads this file directly, excludes titles already in the
-shared queue, rejects duplicate or summary-length output, and saves the complete
-Urdu and English scripts with their source notes. Starter stories remain bundled
-for the initial queue.
+Provider-backed Islamic story writing follows [`prompts/islamic-youtube-story-writer.md`](prompts/islamic-youtube-story-writer.md). The generator applies the relevant content rules, excludes titles already in the signed-in customer's queue, rejects duplicate or summary-length output, and saves complete Urdu and English scripts with source notes.
 
-For real unattended scheduling, configure a cPanel cron job or an external workflow service to call a protected backend endpoint. The recommended production behavior is:
+Recommended production behavior:
 
-1. Scheduler requests a new story draft.
-2. The backend searches only approved source collections.
+1. The scheduler requests a new story draft.
+2. The backend searches approved source collections.
 3. The draft and citations are saved as **Needs review**.
 4. A human reviews the wording and references.
-5. Approval unlocks narrated video rendering in the browser.
-6. The finished video can be previewed and downloaded.
+5. Approval unlocks narrated-video rendering.
+6. The finished video is previewed and downloaded.
 7. The reviewer can optionally upload it privately to YouTube.
 
-Never place ChatGPT, ElevenLabs, or YouTube secrets in browser-side code.
+Never place OpenAI, ElevenLabs, or YouTube secrets in browser-side code.
 
 ## Useful commands
 
 ```bash
-npm run dev       # local development
-npm run build     # production build
-npm start         # production server
-npm run lint      # code checks
-npm test          # production build and story persistence/sync regression tests
-npm run test:stories # reuse an existing build for the regression tests
+npm run dev          # local development
+npm run build        # production build
+npm start            # production server
+npm run lint         # code checks
+npm test             # build plus regression suite
+npm run test:stories # run regressions against an existing build
 ```
 
 ## Technology
@@ -334,15 +263,16 @@ npm run test:stories # reuse an existing build for the regression tests
 - React 19
 - vinext / Vite
 - TypeScript
+- SQLite / Cloudflare D1
 - Cloudflare-compatible server output
 
 ## Safety note
 
 AI-generated religious content can contain incorrect wording, attribution, or authenticity claims. Keep an approved source library and require a qualified reviewer before publishing.
 
+### `.htaccess`
 
-### htaccess
-```
+```apache
 RewriteEngine On
 
 RewriteCond %{REQUEST_FILENAME} -f

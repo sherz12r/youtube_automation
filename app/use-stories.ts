@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { initialStories } from "../lib/story-defaults";
 import { generateStoryRequest, importBrowserStories, storyRequest } from "../lib/story-client";
+import type { StoryFormat } from "../lib/generated-story";
 import type { Story } from "../lib/stories";
 
 export function useStories() {
@@ -73,13 +74,13 @@ export function useStories() {
   }, [loaded]);
 
   const create = (story: Story) => save("POST", { story });
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (format: StoryFormat = "full") => {
     if (!loaded || writing.current) throw new Error("Wait for stories to finish syncing, then retry.");
     writing.current = true;
     ++requestVersion.current;
     setSaving(true);
     try {
-      const result = await generateStoryRequest();
+      const result = await generateStoryRequest(format);
       if (mounted.current) { setStories(result.stories); setError(""); }
       return result;
     } catch (cause) {

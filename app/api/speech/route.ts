@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SPEECH_SEGMENT_LENGTH, SPEECH_VOICE, speechInstructions } from "../../../lib/speech-audio";
+import { requireMutationUser } from "../../../lib/auth";
 
 type Language = "ur" | "en";
 type ProviderError = { error?: { code?: unknown; message?: unknown; type?: unknown } };
@@ -40,6 +41,8 @@ async function createSpeechChunk(apiKey: string, language: Language, input: stri
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireMutationUser(request);
+  if ("response" in auth) return auth.response;
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json(

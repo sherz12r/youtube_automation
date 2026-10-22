@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
-import { listStories } from "../../../db/story-store";
+import { tenantOwnsStory } from "../../../db/story-store";
 import { createVideoReadStream, readVideo, updateVideoYoutubeUrl, writeVideoChunk } from "../../../db/video-store";
+import { authenticateRequest, requireMutationUser } from "../../../lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,15 +17,14 @@ function sameSite(request: Request) {
   return request.headers.get("sec-fetch-site") !== "cross-site";
 }
 
-async function storyExists(id: number) {
-  return (await listStories()).some(story => story.id === id);
-}
-
 export async function GET(request: Request) {
+  const auth = await authenticateRequest(request);
+  if ("response" in auth) return auth.response;
   const id = storyId(request);
   if (!id) return json({ error: "A valid story ID is required." }, 400);
   try {
-    const stored = await readVideo(id);
+    if (!await tenantOwnsStory(auth.user.id, id)) return json({ error: "Story not found." }, 404);
+    const stored = await readVideo(auth.user.id, id);
     if (!stored) return json({ error: "No shared video exists for this story." }, 404);
     const stream = Readable.toWeb(createVideoReadStream(stored.path)) as ReadableStream;
     return new Response(stream, { headers: {
@@ -43,6 +43,8 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireMutationUser(request);
+  if ("response" in auth) return auth.response;
   const id = storyId(request);
   if (!id || !sameSite(request)) return json({ error: "A valid same-site video upload is required." }, 400);
   const language = request.headers.get("x-video-language");
@@ -51,11 +53,11 @@ export async function PUT(request: Request) {
     return json({ error: "Valid video language and renderer version headers are required." }, 400);
   }
   try {
-    if (!await storyExists(id)) return json({ error: "Story not found." }, 404);
+    if (!await tenantOwnsStory(auth.user.id, id)) return json({ error: "Story not found." }, 404);
     const contentLength = Number(request.headers.get("content-length"));
     if (Number.isFinite(contentLength) && contentLength > 2 * 1024 * 1024) return json({ error: "Video chunks must be 2 MB or smaller." }, 413);
     const bytes = new Uint8Array(await request.arrayBuffer());
-    const result = await writeVideoChunk({ storyId: id, language, rendererVersion, contentRange: request.headers.get("content-range"), bytes });
+    const result = await writeVideoChunk({ ownerId: auth.user.id, storyId: id, language, rendererVersion, contentRange: request.headers.get("content-range"), bytes });
     return json(result, result.complete ? 201 : 202);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The shared video could not be saved.";
@@ -65,6 +67,8 @@ export async function PUT(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireMutationUser(request);
+  if ("response" in auth) return auth.response;
   const id = storyId(request);
   if (!id || !sameSite(request) || !request.headers.get("content-type")?.startsWith("application/json")) {
     return json({ error: "A valid same-site metadata request is required." }, 400);
@@ -72,7 +76,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as { youtubeUrl?: unknown };
     if (typeof body.youtubeUrl !== "string" || !body.youtubeUrl.trim()) return json({ error: "A YouTube URL is required." }, 400);
-    return await updateVideoYoutubeUrl(id, body.youtubeUrl.trim())
+    if (!await tenantOwnsStory(auth.user.id, id)) return json({ error: "Story not found." }, 404);
+    return await updateVideoYoutubeUrl(auth.user.id, id, body.youtubeUrl.trim())
       ? json({ saved: true })
       : json({ error: "No shared video exists for this story." }, 404);
   } catch (error) {

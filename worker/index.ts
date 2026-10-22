@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { bindStoryDatabase } from "../db/story-store";
+import { bindPlatformDatabase } from "../db/platform-store";
 
 interface Env {
   ASSETS: Fetcher;
@@ -28,7 +29,10 @@ interface ExecutionContext {
 
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (env?.DB) bindStoryDatabase(env.DB);
+    if (env?.DB) {
+      bindStoryDatabase(env.DB);
+      bindPlatformDatabase(env.DB);
+    }
     const url = new URL(request.url);
 
     if (url.pathname === "/_vinext/image") {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest, requireMutationUser } from "../../../lib/auth";
 
 type SceneInput={kind?:string;label?:string;caption?:string;prophetPresent?:boolean;visualHint?:string;sequence?:number;totalScenes?:number};
 
@@ -6,11 +7,13 @@ const imageModel=process.env.OPENAI_IMAGE_MODEL?.trim()||"gpt-image-2.5-flare";
 const configuredQuality=process.env.OPENAI_IMAGE_QUALITY?.trim().toLowerCase();
 const imageQuality=configuredQuality&&["low","medium","high"].includes(configuredQuality)?configuredQuality:"low";
 
-export async function GET(){
+export async function GET(request:NextRequest){
+ const auth=await authenticateRequest(request);if("response" in auth)return auth.response;
  return NextResponse.json({ready:Boolean(process.env.OPENAI_API_KEY?.trim()),model:imageModel,quality:imageQuality},{headers:{"Cache-Control":"no-store"}});
 }
 
 export async function POST(request:NextRequest){
+ const auth=await requireMutationUser(request);if("response" in auth)return auth.response;
  try{
   const apiKey=process.env.OPENAI_API_KEY?.trim();
   if(!apiKey)return NextResponse.json({error:"Realistic scene generation is not configured. Add OPENAI_API_KEY in cPanel Application Manager, save, and restart the Node.js application."},{status:503});
@@ -21,15 +24,15 @@ export async function POST(request:NextRequest){
   if(scenes.length!==1)return NextResponse.json({error:"Generate one visual scene per request."},{status:400});
   const images:string[]=[];
   for(const [index,scene] of scenes.entries()){
-   const sacredRule=scene.prophetPresent?"A prophet is part of this event. The prophet may appear only as a respectful distant or rear-view robed figure. Fully conceal the face with camera angle, deep shadow, or soft natural light; never show facial features and never use a halo.":"Use historically appropriate ordinary people only; avoid recognizable modern people.";
+   const sacredRule=scene.prophetPresent?"A prophet is part of this event. Create a cinematic background plate with clear foreground, midground, and background depth, but do not depict the Prophet as an identifiable person. Leave uncluttered center-safe space for a fully faceless, rear-view robed silhouette that will be animated in post-production. Never show facial features, a face-shaped glow, or a halo.":"Use historically appropriate ordinary people only; avoid recognizable modern people and leave enough visual separation for animated foreground action.";
    const label=String(scene.label||scene.kind||"Story moment").slice(0,100),caption=String(scene.caption||"").slice(0,700),visualHint=String(scene.visualHint||caption||label).slice(0,900);
    const sequence=Number.isInteger(scene.sequence)&&Number(scene.sequence)>0?Number(scene.sequence):index+1;
    const totalScenes=Number.isInteger(scene.totalScenes)&&Number(scene.totalScenes)>=sequence?Number(scene.totalScenes):scenes.length;
    const prompt=[
-    "Create one cinematic photorealistic live-action historical documentary frame for a narrated Islamic story. It must look like a frame from a serious period film, never an illustration, animation, 2D art, cartoon, CGI render, poster, collage, or thumbnail.",
+    "Create one cinematic photorealistic live-action historical background plate for a narrated Islamic story. It must look like a frame from a serious period film, never an illustration, animation, 2D art, cartoon, CGI render, poster, collage, or thumbnail.",
     "Use realistic people and anatomy, weathered fabric, stone, dust, practical period props, atmospheric depth, realistic camera optics, subtle film grain, believable lighting, and restrained cinematic color grading.",
     "Compose for 16:9 widescreen with the important action center-safe. No text, captions, subtitles, borders, logos, watermarks, UI, or modern objects.",
-    "Show the specific action in this story moment, not a static portrait. Make this sequence frame visibly distinct through its setting, action, staging, lighting, and camera composition.",
+    "Show the setting and physical evidence of the specific action in this story moment, not a static portrait. Use strong depth layers and room for motion compositing. Make this sequence frame visibly distinct through its setting, staging, lighting, and camera composition.",
     "Respectful Islamic treatment: no divine beings, angels, icons, religious caricatures, presenter, or talking head. Keep this frame specific to this narrative moment.",
     sacredRule,
     `Selected story: ${title}. Sequence frame ${sequence} of ${totalScenes}: ${label}. Scene-specific visual brief: ${visualHint}. Narrative event: ${caption}`,

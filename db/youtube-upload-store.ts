@@ -1,5 +1,6 @@
 export type YoutubeUploadSession = {
   id: string;
+  ownerId: string;
   uploadUrl: string;
   fileSize: number;
   mimeType: string;
@@ -35,11 +36,12 @@ function validGoogleUploadUrl(value: string) {
   return url.toString();
 }
 
-export async function createYoutubeUploadSession(uploadUrl: string, fileSize: number, mimeType: string) {
+export async function createYoutubeUploadSession(ownerId: string, uploadUrl: string, fileSize: number, mimeType: string) {
   if (!Number.isSafeInteger(fileSize) || fileSize < 1) throw new Error("Invalid YouTube video size.");
   const { fs, crypto } = modules();
   const session: YoutubeUploadSession = {
     id: crypto.randomUUID(),
+    ownerId,
     uploadUrl: validGoogleUploadUrl(uploadUrl),
     fileSize,
     mimeType,
@@ -49,7 +51,7 @@ export async function createYoutubeUploadSession(uploadUrl: string, fileSize: nu
   return session;
 }
 
-export async function getYoutubeUploadSession(id: string) {
+export async function getYoutubeUploadSession(ownerId: string, id: string) {
   const { fs } = modules();
   let session: YoutubeUploadSession;
   try { session = JSON.parse(await fs.promises.readFile(sessionPath(id), "utf8")) as YoutubeUploadSession; }
@@ -57,7 +59,7 @@ export async function getYoutubeUploadSession(id: string) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
-  if (session.id !== id || !Number.isSafeInteger(session.fileSize) || session.fileSize < 1
+  if (session.id !== id || session.ownerId !== ownerId || !Number.isSafeInteger(session.fileSize) || session.fileSize < 1
     || typeof session.mimeType !== "string" || Date.now() - session.createdAt > sessionLifetime) {
     await deleteYoutubeUploadSession(id);
     return null;

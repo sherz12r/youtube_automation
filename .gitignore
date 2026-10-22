@@ -58,12 +58,20 @@ yarn-error.log*
 /outputs/
 /work/
 
-# Runtime database (never include in Git or build output)
+# Runtime databases and generated server data (never deploy from Git)
 /data/
+**/data/
+/database/
+/databases/
 *.db
+*.db-journal
 *.db-shm
 *.db-wal
 *.sqlite
-*.sqlite3
+*.sqlite-journal
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal

@@ -14,10 +14,8 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
-  // Vinext loads .env.local into the host process, while the Cloudflare Vite
-  // runtime only forwards declared Worker secrets. Declaring the name keeps
-  // the value out of source/build output and makes it available to API routes.
-  secrets: { required: ["OPENAI_API_KEY"] },
+  // Let Wrangler infer every server-only value present in .env.local. A
+  // partial `secrets.required` list hides all unlisted values from the Worker.
   d1_databases: d1
     ? [
         {

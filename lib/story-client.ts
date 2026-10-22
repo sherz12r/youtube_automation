@@ -1,5 +1,6 @@
 import { isStoredStory, legacyStories, type Story } from "./stories";
 import { initialStories } from "./story-defaults";
+import type { StoryFormat } from "./generated-story";
 
 export type StoryResponse = { stories: Story[]; storyId?: number };
 
@@ -33,12 +34,12 @@ export async function storyRequest(init: RequestInit = {}): Promise<StoryRespons
   return payload as StoryResponse;
 }
 
-export async function generateStoryRequest(): Promise<StoryResponse> {
+export async function generateStoryRequest(format: StoryFormat = "full"): Promise<StoryResponse> {
   const response = await fetch("/api/stories/generate", {
     method: "POST",
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ format }),
     signal: AbortSignal.timeout(180000),
   });
   const payload = await jsonResponse(response, "The story generator returned an invalid response. Please retry.");

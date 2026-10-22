@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Noor Studio — Authentic Islamic Story Automation",
-  description: "Research, verify, narrate, create and publish meaningful Islamic stories with human approval.",
+  title: "Noor Studio — YouTube Automation Workspace",
+  description: "Turn your channel strategy into a secure, repeatable workflow for research, scripts, narration, video, and YouTube publishing.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

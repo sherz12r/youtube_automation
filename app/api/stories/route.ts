@@ -1,19 +1,20 @@
 import { createStory, importStories, listStories, updateStoryStatus } from "../../../db/story-store";
 import { isStoredStory, validStatuses, type Story } from "../../../lib/stories";
+import { authenticateRequest, requireMutationUser } from "../../../lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 const headers = { "Cache-Control": "no-store, no-cache, must-revalidate", "CDN-Cache-Control": "no-store" };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers });
 
-async function statusUpdate(payload: Record<string, unknown>) {
+async function statusUpdate(ownerId: string, payload: Record<string, unknown>) {
   const { id, status, progress } = payload;
   if (!Number.isSafeInteger(id) || Number(id) <= 0 || !validStatuses.includes(status as Story["status"])
     || typeof progress !== "number" || !Number.isFinite(progress) || progress < 0 || progress > 100) {
     return json({ error: "Invalid story status." }, 400);
   }
   try {
-    const stories = await updateStoryStatus(id as number, status as Story["status"], progress);
+    const stories = await updateStoryStatus(ownerId, id as number, status as Story["status"], progress);
     return stories.some(story => story.id === id) ? json({ stories }) : json({ error: "Story not found." }, 404);
   } catch (error) { return failure(error); }
 }
@@ -23,8 +24,10 @@ function failure(error: unknown) {
   return json({ error: "Stories could not be saved or loaded. Please retry. If this continues, check the server's story database configuration." }, 503);
 }
 
-export async function GET() {
-  try { return json({ stories: await listStories() }); }
+export async function GET(request: Request) {
+  const auth = await authenticateRequest(request);
+  if ("response" in auth) return auth.response;
+  try { return json({ stories: await listStories(auth.user.id, auth.user.role === "admin") }); }
   catch (error) { return failure(error); }
 }
 
@@ -52,6 +55,8 @@ async function body(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireMutationUser(request);
+  if ("response" in auth) return auth.response;
   let payload;
   try { payload = await body(request); }
   catch { return json({ error: "A valid same-site JSON story request is required (maximum 1 MB)." }, 400); }
@@ -59,18 +64,20 @@ export async function POST(request: Request) {
     if (!Array.isArray(payload.stories) || payload.stories.length > 100 || !payload.stories.every(isStoredStory)) {
       return json({ error: "Invalid stories to import (maximum 100 per request)." }, 400);
     }
-    try { return json({ stories: await importStories(payload.stories) }); }
+    try { return json({ stories: await importStories(auth.user.id, payload.stories, auth.user.role === "admin") }); }
     catch (error) { return failure(error); }
   }
-  if (payload.action === "status") return statusUpdate(payload);
+  if (payload.action === "status") return statusUpdate(auth.user.id, payload);
   if (!isStoredStory(payload.story)) return json({ error: "Invalid story." }, 400);
-  try { return json(await createStory(payload.story), 201); }
+  try { return json(await createStory(auth.user.id, payload.story), 201); }
   catch (error) { return failure(error); }
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireMutationUser(request);
+  if ("response" in auth) return auth.response;
   let payload;
   try { payload = await body(request); }
   catch { return json({ error: "A valid same-site JSON story request is required." }, 400); }
-  return statusUpdate(payload);
+  return statusUpdate(auth.user.id, payload);
 }

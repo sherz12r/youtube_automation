@@ -7,7 +7,7 @@ import ts from "typescript";
 
 await mkdir(resolve("work"), { recursive: true });
 const directory = await mkdtemp(resolve("work/story-client-test-"));
-for (const name of ["stories", "story-defaults", "story-client", "speech-audio", "video-timeline"]) {
+for (const name of ["stories", "story-defaults", "story-client", "speech-audio", "video-timeline", "youtube-oauth"]) {
   const source = await readFile(new URL(`../lib/${name}.ts`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
   await writeFile(resolve(directory, `${name}.mjs`), outputText.replace(/from "(\.\/[^".]+)"/g, 'from "$1.mjs"'));
@@ -16,7 +16,8 @@ const { initialStories } = await import(pathToFileURL(resolve(directory, "story-
 const { legacyStories, storyAge, storyCreatedAt } = await import(pathToFileURL(resolve(directory, "stories.mjs")));
 const { importBrowserStories, storyRequest } = await import(pathToFileURL(resolve(directory, "story-client.mjs")));
 const { combinePcmBuffers, SPEECH_VOICE, speechInstructions, splitTextForSpeech } = await import(pathToFileURL(resolve(directory, "speech-audio.mjs")));
-const { MAX_VIDEO_SCENES, groupStoryMoments, scenePositionAtRatio } = await import(pathToFileURL(resolve(directory, "video-timeline.mjs")));
+const { MAX_VIDEO_SCENES, groupStoryMoments, loopingMotionPhase, sceneMotionProfile, scenePositionAtRatio } = await import(pathToFileURL(resolve(directory, "video-timeline.mjs")));
+const { oauthCookie, oauthCookieValue, oauthStateMatches, youtubeAuthorizationUrl, youtubeOAuthRedirectUri, youtubeUploadScope } = await import(pathToFileURL(resolve(directory, "youtube-oauth.mjs")));
 
 test("browser synchronization handles migration, blocked storage and failed saves", async t => {
   const originalFetch = globalThis.fetch;
@@ -75,6 +76,66 @@ test("browser synchronization handles migration, blocked storage and failed save
     assert.deepEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     assert.equal(scenePositionAtRatio(3, 1).index, 2);
     assert.throws(() => scenePositionAtRatio(0, 0), /at least one scene/);
+  });
+
+  await t.test("assigns continuous story-aware motion instead of static image shuffling", () => {
+    assert.deepEqual(sceneMotionProfile("prayer", true), { action: "pray", environment: "light", actorCount: 1, speed: 0.75 });
+    assert.equal(sceneMotionProfile("journey", true).action, "walk");
+    assert.equal(sceneMotionProfile("escape", true).action, "run");
+    assert.equal(sceneMotionProfile("sea", true).environment, "waves");
+    assert.equal(sceneMotionProfile("service", false).action, "serve");
+    assert.notEqual(loopingMotionPhase(0.1, 1), loopingMotionPhase(0.6, 1));
+    assert.equal(loopingMotionPhase(2, 1), 0);
+  });
+
+  await t.test("records animated stages without fetching or shuffling generated photos", async () => {
+    const source = await readFile(new URL("../app/studio-client.tsx", import.meta.url), "utf8");
+    assert.doesNotMatch(source, /fetch\(["']\/api\/visuals/);
+    assert.doesNotMatch(source, /drawPhoto|realisticImages|imageSources/);
+    assert.match(source, /drawMotionStage\(current\.scene/);
+    assert.match(source, /const videoRendererVersion=5/);
+  });
+
+  await t.test("keeps completed videos visible across renderer upgrades and restores browser-only copies", async () => {
+    const source = await readFile(new URL("../app/studio-client.tsx", import.meta.url), "utf8");
+    assert.doesNotMatch(source, /saved\?\.rendererVersion===videoRendererVersion/);
+    assert.match(source, /if\(saved\)\{setVideoBlob\(saved\.blob\)/);
+    assert.match(source, /if\(cached\)await saveStoryVideo\(storyId,cached\)/);
+  });
+
+  await t.test("offers independent accessible copy actions for every metadata field", async () => {
+    const source = await readFile(new URL("../app/studio-client.tsx", import.meta.url), "utf8");
+    for (const [label, target] of [["Copy title", "title"], ["Copy description", "description"], ["Copy tags", "tags"]]) {
+      assert.match(source, new RegExp(`aria-label=.*${label}`));
+      assert.match(source, new RegExp(`copyText\\([^\\n]+,"${target}"\\)`));
+    }
+    assert.match(source, /function CopyGlyph/);
+    assert.match(source, /className={`copy-all/);
+    assert.doesNotMatch(source, />▣<\/button>/);
+  });
+
+  await t.test("builds a secure YouTube OAuth flow for the public application URL", () => {
+    const previous = process.env.YOUTUBE_OAUTH_REDIRECT_URI;
+    delete process.env.YOUTUBE_OAUTH_REDIRECT_URI;
+    try {
+      const request = new Request("http://internal:3000/api/youtube/oauth/start", { headers: { "x-forwarded-host": "studio.example.test", "x-forwarded-proto": "https" } });
+      const redirectUri = youtubeOAuthRedirectUri(request);
+      assert.equal(redirectUri, "https://studio.example.test/api/youtube/oauth/callback");
+      const authorization = new URL(youtubeAuthorizationUrl("client-id", redirectUri, "secure-state"));
+      assert.equal(authorization.origin, "https://accounts.google.com");
+      assert.equal(authorization.searchParams.get("scope"), youtubeUploadScope);
+      assert.equal(authorization.searchParams.get("access_type"), "offline");
+      assert.equal(authorization.searchParams.get("prompt"), "consent");
+      const cookie = oauthCookie(request, "secure-state");
+      assert.match(cookie, /HttpOnly; SameSite=Lax/);
+      assert.match(cookie, /; Secure$/);
+      assert.equal(oauthCookieValue(new Request(request.url, { headers: { cookie } })), "secure-state");
+      assert.equal(oauthStateMatches("secure-state", "secure-state"), true);
+      assert.equal(oauthStateMatches("secure-state", "wrong-state"), false);
+    } finally {
+      if (previous === undefined) delete process.env.YOUTUBE_OAUTH_REDIRECT_URI;
+      else process.env.YOUTUBE_OAUTH_REDIRECT_URI = previous;
+    }
   });
 
   await t.test("imports once, retains the backup and disables fetch caching", async () => {

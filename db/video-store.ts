@@ -17,19 +17,29 @@ function modules() {
   const fs = process.getBuiltinModule?.("node:fs") as typeof import("node:fs") | undefined;
   const path = process.getBuiltinModule?.("node:path") as typeof import("node:path") | undefined;
   if (!fs || !path) throw new Error("Shared video storage requires the Node.js runtime.");
-  const directory = path.resolve(process.env.VIDEO_STORAGE_PATH || path.join(process.cwd(), "data", "videos"));
+  const configuredVideoPath = process.env.VIDEO_STORAGE_PATH?.trim();
+  const configuredDatabasePath = process.env.STORY_DATABASE_PATH?.trim();
+  // Keep videos beside the persistent SQLite database by default. This avoids
+  // tying completed renders to a temporary build or Passenger working folder.
+  const directory = path.resolve(configuredVideoPath || (configuredDatabasePath
+    ? path.join(path.dirname(path.resolve(configuredDatabasePath)), "videos")
+    : path.join(process.cwd(), "data", "videos")));
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   return { fs, path, directory };
 }
 
-function paths(storyId: number) {
+function paths(ownerId: string, storyId: number) {
   if (!Number.isSafeInteger(storyId) || storyId <= 0) throw new Error("Invalid story ID.");
   const { path, directory } = modules();
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(ownerId)) throw new Error("Invalid account ID.");
+  const ownerDirectory = path.join(directory, ownerId);
+  const { fs } = modules();
+  fs.mkdirSync(ownerDirectory, { recursive: true, mode: 0o700 });
   return {
-    video: path.join(directory, `${storyId}.webm`),
-    partial: path.join(directory, `${storyId}.webm.part`),
-    metadata: path.join(directory, `${storyId}.json`),
-    metadataPartial: path.join(directory, `${storyId}.json.part`),
+    video: path.join(ownerDirectory, `${storyId}.webm`),
+    partial: path.join(ownerDirectory, `${storyId}.webm.part`),
+    metadata: path.join(ownerDirectory, `${storyId}.json`),
+    metadataPartial: path.join(ownerDirectory, `${storyId}.json.part`),
   };
 }
 
@@ -52,6 +62,7 @@ export function parseVideoRange(value: string | null) {
 }
 
 export async function writeVideoChunk(input: {
+  ownerId: string;
   storyId: number;
   language: VideoLanguage;
   rendererVersion: number;
@@ -59,7 +70,7 @@ export async function writeVideoChunk(input: {
   bytes: Uint8Array;
 }) {
   const { fs } = modules();
-  const filePaths = paths(input.storyId);
+  const filePaths = paths(input.ownerId, input.storyId);
   const range = parseVideoRange(input.contentRange);
   if (input.bytes.byteLength !== range.end - range.start + 1) throw new Error("The video chunk length does not match its byte range.");
   if (!Number.isSafeInteger(input.rendererVersion) || input.rendererVersion < 1) throw new Error("Invalid video renderer version.");
@@ -95,9 +106,9 @@ export async function writeVideoChunk(input: {
   return { complete: true, received, total: range.total };
 }
 
-export async function readVideo(storyId: number) {
+export async function readVideo(ownerId: string, storyId: number) {
   const { fs } = modules();
-  const filePaths = paths(storyId);
+  const filePaths = paths(ownerId, storyId);
   try {
     const [rawMetadata, stat] = await Promise.all([
       fs.promises.readFile(filePaths.metadata, "utf8"),
@@ -113,14 +124,14 @@ export async function readVideo(storyId: number) {
   }
 }
 
-export async function updateVideoYoutubeUrl(storyId: number, youtubeUrl: string) {
-  const current = await readVideo(storyId);
+export async function updateVideoYoutubeUrl(ownerId: string, storyId: number, youtubeUrl: string) {
+  const current = await readVideo(ownerId, storyId);
   if (!current) return false;
   const url = new URL(youtubeUrl);
   if (url.protocol !== "https:" || !["youtube.com", "www.youtube.com", "youtu.be"].includes(url.hostname)) {
     throw new Error("Invalid YouTube video URL.");
   }
-  const filePaths = paths(storyId);
+  const filePaths = paths(ownerId, storyId);
   await writeMetadata(filePaths.metadata, filePaths.metadataPartial, { ...current.metadata, youtubeUrl: url.toString(), updatedAt: Date.now() });
   return true;
 }

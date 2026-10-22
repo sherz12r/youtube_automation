@@ -136,8 +136,10 @@ Never sacrifice Islamic or historical accuracy for virality.
   the source. Never derive a new ruling from a historical anecdote.
 - End with one short, memorable takeaway. A brief appropriate dua is allowed.
   Put any gentle subscribe call after the story; never interrupt a sacred moment.
-- For Shorts: hook immediately, cover one event/lesson, move quickly, and do not
-  compress facts until they become misleading.
+- For Shorts: hook immediately inside the event, cover one event/lesson, move
+  quickly, and do not compress facts until they become misleading. Do not use
+  the long-form "Today we will tell you..." introduction, greet the audience,
+  introduce the video, or announce that a story is about to be told.
 - For long-form: provide necessary context, logical sections and transitions,
   useful dates only, no padding, and clearly separate fact from interpretation.
 - Write an SEO-friendly description naturally, including the subject, useful

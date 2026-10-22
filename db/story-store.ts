@@ -2,25 +2,23 @@ import type { DatabaseSync } from "node:sqlite";
 import { initialStories } from "../lib/story-defaults";
 import { storyKey, type Story } from "../lib/stories";
 
+type SqlValue = string | number | null;
 type Row = { id: number; data: string };
-type Statement = { sql: string; values: (string | number)[] };
-// The small common SQL surface works with cPanel SQLite and the existing
-// Cloudflare Worker build, without importing Node-only code in a Worker.
+type Statement = { sql: string; values: SqlValue[] };
 type D1Binding = {
   prepare(sql: string): {
-    bind(...values: (string | number)[]): ReturnType<D1Binding["prepare"]>;
+    bind(...values: SqlValue[]): ReturnType<D1Binding["prepare"]>;
     all<T>(): Promise<{ results: T[] }>;
     run(): Promise<unknown>;
   };
   batch(statements: ReturnType<D1Binding["prepare"]>[]): Promise<unknown>;
 };
+
 let cloudflareDb: D1Binding | undefined;
 let sqliteDb: DatabaseSync | undefined;
 let initialization: Promise<void> | undefined;
 
-export function bindStoryDatabase(db: D1Binding) {
-  cloudflareDb = db;
-}
+export function bindStoryDatabase(db: D1Binding) { cloudflareDb = db; }
 
 function sqlite() {
   if (sqliteDb) return sqliteDb;
@@ -30,15 +28,14 @@ function sqlite() {
   const path = process.getBuiltinModule("node:path") as typeof import("node:path");
   const filename = path.resolve(process.env.STORY_DATABASE_PATH || path.join(process.cwd(), "data", "stories.sqlite"));
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
-  const db = new sqliteModule.DatabaseSync(filename);
-  try {
-    db.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;");
-  } catch (error) {
-    db.close();
-    throw error;
-  }
-  sqliteDb = db;
-  return db;
+  sqliteDb = new sqliteModule.DatabaseSync(filename);
+  sqliteDb.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;");
+  return sqliteDb;
+}
+
+async function all<T>(sql: string, values: SqlValue[] = []) {
+  if (cloudflareDb) return (await cloudflareDb.prepare(sql).bind(...values).all<T>()).results;
+  return sqlite().prepare(sql).all(...values) as T[];
 }
 
 async function batch(statements: Statement[]) {
@@ -51,74 +48,87 @@ async function batch(statements: Statement[]) {
   try {
     for (const { sql, values } of statements) db.prepare(sql).run(...values);
     db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
-function insertion(story: Story, timestamp: number, importing = false): Statement {
-  // Keep legacy IDs for this browser's saved video references. If two browsers
-  // generated different titles in the same millisecond, allocate a fresh ID.
+function insertion(ownerId: string, story: Story, timestamp: number, importing = false): Statement {
   return {
-    sql: `INSERT INTO stories (id, story_key, data, updated_at)
+    sql: `INSERT INTO stories (id, owner_id, story_key, data, updated_at)
       VALUES (CASE WHEN EXISTS (SELECT 1 FROM stories WHERE id = ?)
-        THEN max(?, (SELECT coalesce(max(id), 0) + 1 FROM stories)) ELSE ? END, ?, ?, ?)
-      ON CONFLICT(story_key) DO ${importing
+        THEN max(?, (SELECT coalesce(max(id), 0) + 1 FROM stories)) ELSE ? END, ?, ?, ?, ?)
+      ON CONFLICT(owner_id, story_key) DO ${importing
         ? "UPDATE SET data = excluded.data, updated_at = excluded.updated_at WHERE stories.updated_at = 0"
         : "NOTHING"}`,
-    values: [story.id, story.id, story.id, storyKey(story), JSON.stringify(story), timestamp],
+    values: [story.id, story.id, story.id, ownerId, storyKey(story), JSON.stringify(story), timestamp],
   };
 }
 
 async function initialize() {
   initialization ??= (async () => {
-    await batch([{
-      sql: `CREATE TABLE IF NOT EXISTS stories (
+    const columns = await all<{ name: string }>("PRAGMA table_info(stories)");
+    if (columns.length && !columns.some(column => column.name === "owner_id")) {
+      await batch([
+        { sql: "ALTER TABLE stories RENAME TO stories_legacy", values: [] },
+        { sql: `CREATE TABLE stories (id INTEGER PRIMARY KEY NOT NULL, owner_id TEXT NOT NULL, story_key TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, UNIQUE(owner_id, story_key))`, values: [] },
+        { sql: "INSERT INTO stories (id,owner_id,story_key,data,updated_at) SELECT id,'__legacy__',story_key,data,updated_at FROM stories_legacy", values: [] },
+        { sql: "DROP TABLE stories_legacy", values: [] },
+      ]);
+    } else if (!columns.length) {
+      await batch([{ sql: `CREATE TABLE IF NOT EXISTS stories (
         id INTEGER PRIMARY KEY NOT NULL,
-        story_key TEXT NOT NULL UNIQUE,
+        owner_id TEXT NOT NULL,
+        story_key TEXT NOT NULL,
         data TEXT NOT NULL,
-        updated_at INTEGER NOT NULL DEFAULT 0
-      )`, values: [],
-    }, ...initialStories.map(story => insertion(story, 0))]);
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(owner_id, story_key)
+      )`, values: [] }]);
+    }
+    await batch([{ sql: "CREATE INDEX IF NOT EXISTS stories_owner_id_idx ON stories(owner_id)", values: [] }]);
   })().catch(error => { initialization = undefined; throw error; });
   await initialization;
 }
 
-export async function listStories(): Promise<Story[]> {
+async function ensureTenant(ownerId: string, claimLegacy = false) {
   await initialize();
-  const sql = "SELECT id, data FROM stories ORDER BY id DESC";
-  const rows = cloudflareDb
-    ? (await cloudflareDb.prepare(sql).all<Row>()).results
-    : sqlite().prepare(sql).all() as Row[];
+  if (claimLegacy) await batch([{ sql: "UPDATE stories SET owner_id = ? WHERE owner_id = '__legacy__'", values: [ownerId] }]);
+  const count = (await all<{ total: number }>("SELECT count(*) AS total FROM stories WHERE owner_id = ?", [ownerId]))[0]?.total ?? 0;
+  if (!count) await batch(initialStories.map(story => insertion(ownerId, story, 0)));
+}
+
+export async function listStories(ownerId: string, claimLegacy = false): Promise<Story[]> {
+  await ensureTenant(ownerId, claimLegacy);
+  const rows = await all<Row>("SELECT id, data FROM stories WHERE owner_id = ? ORDER BY id DESC", [ownerId]);
   return rows.map(row => ({ ...JSON.parse(row.data), id: row.id }));
 }
 
-export async function importStories(stories: Story[]) {
-  await initialize();
+export async function importStories(ownerId: string, stories: Story[], claimLegacy = false) {
+  await ensureTenant(ownerId, claimLegacy);
   if (stories.length) await batch(stories.map(story => {
     const seed = initialStories.find(initial => storyKey(initial) === storyKey(story));
     const unchangedSeed = seed && seed.status === story.status && seed.progress === story.progress;
-    // A fresh browser's old starter snapshot must not prevent a later import
-    // of the owner's reviewed starter stories.
-    return insertion(story, unchangedSeed ? 0 : Date.now(), true);
+    return insertion(ownerId, story, unchangedSeed ? 0 : Date.now(), true);
   }));
-  return listStories();
+  return listStories(ownerId);
 }
 
-export async function createStory(story: Story) {
-  await initialize();
+export async function createStory(ownerId: string, story: Story) {
+  await ensureTenant(ownerId);
   const createdAt = Date.now();
-  await batch([insertion({ ...story, id: createdAt, createdAt, status: "Needs review", progress: 68 }, createdAt)]);
-  const stories = await listStories();
+  await batch([insertion(ownerId, { ...story, id: createdAt, createdAt, status: "Needs review", progress: 68 }, createdAt)]);
+  const stories = await listStories(ownerId);
   return { stories, storyId: stories.find(saved => storyKey(saved) === storyKey(story))!.id };
 }
 
-export async function updateStoryStatus(id: number, status: Story["status"], progress: number) {
-  await initialize();
+export async function updateStoryStatus(ownerId: string, id: number, status: Story["status"], progress: number) {
+  await ensureTenant(ownerId);
   await batch([{
-    sql: "UPDATE stories SET data = json_set(data, '$.status', ?, '$.progress', ?), updated_at = ? WHERE id = ?",
-    values: [status, progress, Date.now(), id],
+    sql: "UPDATE stories SET data = json_set(data, '$.status', ?, '$.progress', ?), updated_at = ? WHERE id = ? AND owner_id = ?",
+    values: [status, progress, Date.now(), id, ownerId],
   }]);
-  return listStories();
+  return listStories(ownerId);
+}
+
+export async function tenantOwnsStory(ownerId: string, id: number) {
+  await initialize();
+  return Boolean((await all<{ id: number }>("SELECT id FROM stories WHERE id = ? AND owner_id = ? LIMIT 1", [id, ownerId]))[0]);
 }
